@@ -1,0 +1,22 @@
+# mine_hyp.yaml - Hyperparameters for Underground Mining Environment
+lr0: 0.01  # Initial learning rate
+lrf: 0.01  # Final learning rate
+momentum: 0.937
+weight_decay: 0.0005
+warmup_epochs: 3.0
+
+# Augmentation for Domain Shift
+hsv_h: 0.015  # Hue: Giữ nguyên cơ bản vì màu áo phản quang vẫn cần chút nhận diện
+hsv_s: 0.7    # Saturation: Tương phản màu sắc
+hsv_v: 0.8    # Value (Độ sáng): Biến thiên rất mạnh để tạo ra các batch ảnh cực tối
+degrees: 10.0 # Xoay ảnh 
+translate: 0.1
+scale: 0.5
+shear: 2.0
+perspective: 0.0
+
+# Optical Distortions
+bgr: 0.2      # Thay đổi kênh màu BGR để mô phỏng sai lệch màu của camera hồng ngoại
+
+mosaic: 1.0   # Ép 4 ảnh vào 1 để tăng cường khả năng nhận diện vật thể nhỏ
+mixup: 0.1
