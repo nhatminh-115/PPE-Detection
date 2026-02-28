@@ -4,15 +4,16 @@ on:
   push:
     branches:
       - '**'
-  pull_request:
-    branches:
-      - main
     paths-ignore:
       - 'README.md'
       - '.github/workflows/**' 
       - 'docs/**'              
       - '.gitignore'
       - '.dockerignore'
+  pull_request:
+    branches:
+      - main
+
 jobs:
   validate-and-test:
     runs-on: ubuntu-latest
