@@ -1,0 +1,41 @@
+name: CI - Code Quality & Testing
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'REAME.md'
+      - '.github/workflows/**' 
+      - 'docs/**'              
+      - '.gitignore'
+      - '.dockerignore'
+jobs:
+  validate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+          pip install -r requirements.txt
+
+      - name: Syntax and Style Linting (Flake8)
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Execute Unit Tests (Pytest)
+        run: |
+          pytest tests/
