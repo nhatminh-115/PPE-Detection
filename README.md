@@ -1,1 +1,1 @@
-[![CI - Code Quality & Testing](https://github.com/nhatminh-115/PPE-Detection/actions/workflows/ci-pipeline.yml/badge.svg)](https://github.com/nhatminh-115/PPE-Detection/actions/workflows/ci-pipeline.yml)
+[![CI/CD Pipeline](https://github.com/nhatminh-115/PPE-Detection/actions/workflows/ci-cd-pipeline.yml/badge.svg)](https://github.com/nhatminh-115/PPE-Detection/actions/workflows/ci-cd-pipeline.yml)
