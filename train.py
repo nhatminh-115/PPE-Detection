@@ -24,7 +24,6 @@ def fetch_latest_domain_weights(experiment_name="PPE_Mining_Production"):
         if not experiment:
             return "yolo11m.pt"
             
-        # Nâng cấp kiến trúc: Ép buộc hệ thống chỉ lấy các Run đã hoàn thành trọn vẹn
         runs = client.search_runs(
             experiment_ids=[experiment.experiment_id],
             filter_string="attributes.status = 'FINISHED'",
@@ -65,7 +64,7 @@ def train_underground_ppe():
     print(f"[SYSTEM] Hardware Accelerator: {device}")
     print(f"[SYSTEM] Computational Graph initialized from: {model_checkpoint}")
 
-    with mlflow.start_run(run_name="Underground_Finetuning_v2") as run:
+    with mlflow.start_run(run_name="Underground_Finetuning_3") as run:
         print(f"[SYSTEM] Active Telemetry Session: {run.info.run_id}")
         
         mlflow.autolog(log_models=False) 
@@ -73,7 +72,7 @@ def train_underground_ppe():
         model.train(
             data="datasets/data.yaml",
             cfg="mine_hyp.yaml",
-            epochs=50,
+            epochs=100,
             imgsz=640,
             batch=16,
             device=device,
@@ -81,7 +80,9 @@ def train_underground_ppe():
             name="underground_ppe_finetune",
             exist_ok=True,
             val=True,
-            workers=2
+            workers=2,
+            save_period=5,
+            patience=20
         )
         
         best_model_path = "runs/detect/underground_ppe_finetune/weights/best.pt"
