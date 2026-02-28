@@ -10,7 +10,7 @@ st.set_page_config(page_title="PPE Detection MLOps", layout="wide")
 
 FLASK_API_URL = os.environ.get("API_URL", "http://localhost:8000/detect")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "") 
 
 @st.cache_resource
 def init_database() -> Client:
