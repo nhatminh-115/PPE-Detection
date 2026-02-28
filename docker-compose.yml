@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: ppe_backend
+    command: python app.py
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    networks:
+      - ppe_network
+
+  frontend:
+    build: .
+    container_name: ppe_frontend
+    command: streamlit run interface.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://backend:8000/detect
+    env_file:
+      - .env
+    depends_on:
+      - backend
+    networks:
+      - ppe_network
+
+networks:
+  ppe_network:
+    driver: bridge

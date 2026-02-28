@@ -218,4 +218,3 @@ __pycache__/
 .env
 mlartifacts/
 mlflow.db
-.env
