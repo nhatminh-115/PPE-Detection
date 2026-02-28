@@ -19,7 +19,6 @@ except Exception as e:
     print(f"[SYSTEM WARNING] Supabase connection failed. Execution will proceed without logging. Details: {e}")
     supabase = None
 
-# 2. Tracking Server Configuration
 os.environ["MLFLOW_TRACKING_URI"] = "https://dagshub.com/nhatminh-115/PPE-Detection.mlflow"
 
 def initialize_model(experiment_name="PPE_Mining_Production"):
@@ -64,6 +63,22 @@ model = initialize_model(experiment_name="PPE_Mining_Production")
 
 RAW_MODEL_CLASSES = ['no_helmet', 'no_gloves', 'no_boots', 'no_goggle', 'none']
 
+def apply_clahe_preprocessing(img: np.ndarray) -> np.ndarray:
+    """
+    Tiền xử lý ảnh động sử dụng CLAHE trên không gian màu LAB.
+    Giúp chuẩn hóa độ tương phản cục bộ, khắc phục hiện tượng đổ bóng gắt do ánh sáng mặt trời.
+    """
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l_channel, a, b = cv2.split(lab)
+    
+    # Khởi tạo thuật toán CLAHE với ngưỡng giới hạn tương phản (clipLimit)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    cl = clahe.apply(l_channel)
+    
+    merged = cv2.merge((cl, a, b))
+    enhanced_img = cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
+    return enhanced_img
+
 @app.route('/detect', methods=['POST'])
 def detect_ppe():
     if model is None:
@@ -79,7 +94,14 @@ def detect_ppe():
     if img is None:
         return jsonify({"error": "Bad Request: Invalid image format."}), 400
 
-    results = model(img, verbose=False)[0]
+    # 1. Pipeline Tiền xử lý (Preprocessing)
+    processed_img = apply_clahe_preprocessing(img)
+
+    # 2. Pipeline Suy luận (Inference) với cơ chế siết chặt Hyperparameters
+    # conf=0.45: Loại bỏ các dự đoán yếu.
+    # iou=0.45: Khử nhiễu khung hình chồng chéo bằng Non-Maximum Suppression.
+    results = model(processed_img, conf=0.45, iou=0.45, verbose=False)[0]
+    
     violations_detected = []
     
     for box in results.boxes:
@@ -95,6 +117,7 @@ def detect_ppe():
                 "confidence": round(confidence, 3)
             })
 
+    # 3. Hậu xử lý và Đóng gói Payload
     annotated_img = results.plot()
     _, buffer = cv2.imencode('.jpg', annotated_img)
     img_base64 = base64.b64encode(buffer).decode('utf-8')
