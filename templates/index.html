@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPE Vision - MLOps Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
+        .glass-panel { background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(12px); border: 1px solid #334155; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    </style>
+</head>
+<body class="h-screen w-screen flex overflow-hidden">
+
+    <aside class="w-80 glass-panel flex flex-col p-6 shadow-2xl z-10 flex-shrink-0 border-r border-slate-700">
+        <div class="mb-8 border-b border-slate-700 pb-4">
+            <h1 class="text-2xl font-bold text-white tracking-wider flex items-center gap-2">
+                PPE <span class="text-emerald-400">VISION</span>
+            </h1>
+            <p class="text-xs text-slate-400 mt-1 tracking-widest uppercase">Production MLOps</p>
+        </div>
+
+        <div class="space-y-2 mb-8">
+            <button onclick="switchTab('live-tab')" id="nav-live" class="w-full py-3 px-4 text-left rounded-lg bg-slate-800 text-white font-medium border border-slate-600 transition-colors">
+                🔴 Live Inference Feed
+            </button>
+            <button onclick="switchTab('log-tab')" id="nav-log" class="w-full py-3 px-4 text-left rounded-lg text-slate-400 hover:bg-slate-800/50 font-medium transition-colors">
+                📋 Violation Logs & Data
+            </button>
+        </div>
+
+        <div class="space-y-6 flex-1 overflow-y-auto custom-scrollbar pr-2">
+            <div class="space-y-3">
+                <h2 class="text-xs font-semibold text-slate-300 uppercase tracking-widest">Video Injection</h2>
+                <div class="flex flex-col gap-2">
+                    <label for="video-upload" id="upload-label" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-medium transition-colors border border-slate-600 cursor-pointer text-center">
+                        📂 Select Local Video
+                    </label>
+                    <input type="file" id="video-upload" class="hidden" accept="video/mp4,video/avi" onchange="uploadVideoFile()">
+                </div>
+            </div>
+            
+            <div class="space-y-3">
+                <h2 class="text-xs font-semibold text-slate-300 uppercase tracking-widest">Database Sync</h2>
+                <div class="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                    <div class="flex items-center space-x-2 text-sm">
+                        <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                        <span class="text-slate-300 font-medium">Supabase Connected</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-slate-700">
+            <button id="btn-stream" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium shadow-lg transition-colors" onclick="toggleStream()">
+                Initialize Inference Engine
+            </button>
+        </div>
+    </aside>
+
+    <main class="flex-1 bg-slate-900 relative flex flex-col p-6 overflow-hidden">
+        
+        <div id="live-tab" class="h-full flex flex-col">
+            <header class="h-16 glass-panel rounded-xl mb-4 px-6 flex justify-between items-center border border-slate-700">
+                <h2 class="text-lg font-semibold text-white">Zone A - Active Monitoring</h2>
+                <span id="stream-status-badge" class="px-4 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-400 font-mono">OFFLINE</span>
+            </header>
+
+            <div class="flex-1 glass-panel rounded-xl overflow-hidden relative border border-slate-700 flex items-center justify-center bg-black">
+                <img id="video-stream" src="" alt="Stream Offline" class="hidden w-full h-full object-contain">
+                <div id="offline-placeholder" class="text-center text-slate-500">
+                    <div>Engine is Standing By</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="log-tab" class="h-full flex flex-col hidden">
+            <header class="h-16 glass-panel rounded-xl mb-4 px-6 flex justify-between items-center border border-slate-700">
+                <h2 class="text-lg font-semibold text-white">Supabase Violation Registry</h2>
+                <div class="flex gap-3">
+                    <button onclick="fetchViolations()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg">
+                        🔄 Refresh Data
+                    </button>
+                    <button onclick="flushImages()" class="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg">
+                        🗑️ Flush Local Images
+                    </button>
+                </div>
+            </header>
+
+            <div class="flex-1 glass-panel rounded-xl overflow-y-auto custom-scrollbar p-6 border border-slate-700">
+                <div id="violations-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    <div class="col-span-full text-center text-slate-500 py-10">Click 'Refresh Data' to pull from Supabase.</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="toast-container" class="absolute bottom-4 right-4 flex flex-col gap-2 z-50"></div>
+    </main>
+
+    <script>
+        let isStreaming = false;
+
+        // UI Tabs Switching
+        function switchTab(tabId) {
+            document.getElementById('live-tab').classList.add('hidden');
+            document.getElementById('log-tab').classList.add('hidden');
+            document.getElementById(tabId).classList.remove('hidden');
+
+            document.getElementById('nav-live').className = "w-full py-3 px-4 text-left rounded-lg text-slate-400 hover:bg-slate-800/50 font-medium transition-colors";
+            document.getElementById('nav-log').className = "w-full py-3 px-4 text-left rounded-lg text-slate-400 hover:bg-slate-800/50 font-medium transition-colors";
+
+            if(tabId === 'live-tab') {
+                document.getElementById('nav-live').className = "w-full py-3 px-4 text-left rounded-lg bg-slate-800 text-white font-medium border border-slate-600 transition-colors";
+            } else {
+                document.getElementById('nav-log').className = "w-full py-3 px-4 text-left rounded-lg bg-slate-800 text-white font-medium border border-slate-600 transition-colors";
+                fetchViolations(); // Tu dong fetch khi chuyen tab
+            }
+        }
+
+        // Stream Toggle
+        function toggleStream() {
+            const videoElement = document.getElementById('video-stream');
+            const placeholder = document.getElementById('offline-placeholder');
+            const btnStream = document.getElementById('btn-stream');
+            const statusBadge = document.getElementById('stream-status-badge');
+
+            isStreaming = !isStreaming;
+            if (isStreaming) {
+                videoElement.src = "/video_feed";
+                videoElement.classList.remove('hidden');
+                placeholder.classList.add('hidden');
+                
+                btnStream.textContent = "Halt Inference Engine";
+                btnStream.className = "w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-medium shadow-lg transition-colors";
+                statusBadge.textContent = "LIVE";
+                statusBadge.className = "px-4 py-1.5 bg-emerald-900/50 border border-emerald-700 rounded-lg text-sm text-emerald-400 font-mono";
+            } else {
+                videoElement.src = "";
+                videoElement.classList.add('hidden');
+                placeholder.classList.remove('hidden');
+                
+                btnStream.textContent = "Initialize Inference Engine";
+                btnStream.className = "w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium shadow-lg transition-colors";
+                statusBadge.textContent = "OFFLINE";
+                statusBadge.className = "px-4 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-400 font-mono";
+            }
+        }
+
+        // Video Upload
+        async function uploadVideoFile() {
+            const fileInput = document.getElementById('video-upload');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            try {
+                const formData = new FormData();
+                formData.append('video_file', file);
+                const response = await fetch('/upload_video', { method: 'POST', body: formData });
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showToast(result.message, "success");
+                    if (!isStreaming) toggleStream(); 
+                } else showToast("Upload failed", "error");
+            } catch (error) { showToast("Upload error.", "error"); }
+        }
+
+        // --- FETCH DU LIEU TU SUPABASE ---
+        async function fetchViolations() {
+            const grid = document.getElementById('violations-grid');
+            grid.innerHTML = '<div class="col-span-full text-center text-slate-400">Loading data from Supabase...</div>';
+            
+            try {
+                const response = await fetch('/api/violations');
+                const result = await response.json();
+                const data = result.data;
+
+                if (!data || data.length === 0) {
+                    grid.innerHTML = '<div class="col-span-full text-center text-slate-500">No violations found in database.</div>';
+                    return;
+                }
+
+                grid.innerHTML = '';
+                data.forEach(item => {
+                    // Extract data tu mang JSONB (Lay phan tu dau tien dai dien)
+                    const v_data = item.violations[0] || {};
+                    const imgPath = v_data.image_path ? `/${v_data.image_path}` : '';
+                    const timeStr = new Date(item.created_at).toLocaleTimeString();
+                    
+                    const card = document.createElement('div');
+                    card.className = "bg-slate-800 border border-slate-700 rounded-xl overflow-hidden hover:border-emerald-500 transition-colors shadow-lg";
+                    
+                    card.innerHTML = `
+                        <div class="h-48 bg-slate-900 flex items-center justify-center border-b border-slate-700 relative">
+                            ${imgPath ? `<img src="${imgPath}" class="w-full h-full object-cover" onerror="this.src=''; this.alt='Image flushed/missing'">` : '<span class="text-slate-600 text-sm">No Image Data</span>'}
+                            <div class="absolute top-2 right-2 bg-rose-600 text-white text-xs px-2 py-1 rounded font-bold">ID: ${v_data.tracker_id || 'N/A'}</div>
+                        </div>
+                        <div class="p-4">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-emerald-400 text-xs font-mono">${timeStr}</span>
+                                <span class="text-slate-400 text-xs">${item.status}</span>
+                            </div>
+                            <h3 class="text-white font-medium text-sm mb-2">Missing Items:</h3>
+                            <div class="flex flex-wrap gap-1">
+                                ${item.violations.map(v => `<span class="px-2 py-1 bg-rose-900/50 text-rose-300 rounded text-xs border border-rose-800">${v.violation_type.replace('none_','').toUpperCase()}</span>`).join('')}
+                            </div>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            } catch (error) {
+                grid.innerHTML = '<div class="col-span-full text-center text-rose-500">Failed to fetch data from API.</div>';
+            }
+        }
+
+        // --- XOA ANH CUC BO ---
+        async function flushImages() {
+            if(!confirm("Are you sure you want to delete all local violation images? This cannot be undone.")) return;
+            try {
+                const response = await fetch('/api/flush', { method: 'POST' });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showToast(result.message, "success");
+                    fetchViolations(); // Reload the grid so images show as missing
+                } else showToast("Flush failed.", "error");
+            } catch (error) { showToast("Network error.", "error"); }
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            let bgClass = type === 'success' ? 'bg-emerald-900/80 border-emerald-700 text-emerald-100' : 'bg-rose-900/80 border-rose-700 text-rose-100';
+            toast.className = `px-4 py-3 rounded-lg border shadow-lg text-sm backdrop-blur-md transition-opacity duration-300 ${bgClass}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => { toast.classList.add('opacity-0'); setTimeout(() => toast.remove(), 300); }, 3000);
+        }
+    </script>
+</body>
+</html>

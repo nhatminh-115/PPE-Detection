@@ -1,22 +1,34 @@
-datasets/
-runs/
-mlruns/
-.mlflow.db
-mlartifacts/
-mlflow.db
+# 1. Git & CI/CD Meta-data (Not needed in production container)
+.git/
+.github/
+.gitignore
 
-venv/
-env/
-.venv/
+# 2. Documentation & Local Tests
+README.md
+LICENSE
+tests/
+sanity_check.py
 
+# 3. Environment Secrets (Must be injected at runtime, NOT baked into image)
+.env
+
+# 4. Python Cache
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
 .pytest_cache/
 
-.git/
-.gitignore
-.vscode/
+# 5. Ephemeral Directories & Heavy Data (Must use Docker Volumes instead)
+datasets/
+model_cache/
+temp_uploads/
+violation_crops/
 
-.env
+# 6. Extraneous Scripts (Only keep what the API needs)
+train_1.py
+train_2.py
+ultralytics_etl.py
+ppe_dataset.py
+app_1.py
+app_2.py
+sanity_check.py
+ultralytics_etl.py

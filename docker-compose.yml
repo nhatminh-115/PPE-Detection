@@ -1,32 +1,22 @@
 version: '3.8'
 
 services:
-  backend:
-    image: nhatminh115/ppe_system:latest
-    container_name: ppe_backend_demo
-    command: python app.py
+  ppe_inference_engine:
+    build: .
+    container_name: ppe_fastapi_core
+    restart: unless-stopped
     ports:
       - "8000:8000"
     env_file:
-      - demo.env
-    networks:
-      - ppe_network
-
-  frontend:
-    image: nhatminh115/ppe_system:latest
-    container_name: ppe_frontend_demo
-    command: streamlit run interface.py --server.port=8501 --server.address=0.0.0.0
-    ports:
-      - "8501:8501"
-    environment:
-      - API_URL=http://backend:8000/detect
-    env_file:
-      - demo.env
-    depends_on:
-      - backend
-    networks:
-      - ppe_network
-
-networks:
-  ppe_network:
-    driver: bridge
+      - .env
+    volumes:
+      - ./model_cache:/app/model_cache
+      - ./violation_crops:/app/violation_crops
+      - ./temp_uploads:/app/temp_uploads
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
