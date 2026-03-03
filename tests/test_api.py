@@ -3,33 +3,28 @@ import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
-# ==============================================================================
-# MOCK DEPENDENCIES
-# Thứ tự quan trọng:
-# 1. patch supabase.create_client TRƯỚC — ngăn init_supabase() crash ở global scope
-# 2. patch torch.load TRƯỚC — ngăn load model thật
-# 3. Sau đó mới import api
-# ==============================================================================
-
 mock_supabase = MagicMock()
-mock_supabase.table.return_value.select.return_value.order.return_value.limit.return_value.execute.return_value.data = []
+mock_supabase.table.return_value.select.return_value \
+    .order.return_value.limit.return_value \
+    .execute.return_value.data = []
 mock_supabase.table.return_value.insert.return_value.execute.return_value = {}
 
-patch_supabase_create = patch("supabase.create_client", return_value=mock_supabase)
-patch_yolo             = patch("ultralytics.YOLO", MagicMock())
-patch_timm             = patch("timm.create_model", MagicMock())
-patch_torch_load       = patch("torch.load", return_value={})
-patch_mlflow           = patch("mlflow.set_tracking_uri", MagicMock())
-patch_pull             = patch("api.pull_artifact_from_mlflow_run", return_value="mock_weight.pt")
+patch_supabase   = patch("supabase.create_client",              return_value=mock_supabase)
+patch_mlflow_dl  = patch("mlflow.artifacts.download_artifacts", return_value="mock_weight.pt")
+patch_mlflow_uri = patch("mlflow.set_tracking_uri",             MagicMock())
+patch_os_rename  = patch("os.rename",                           MagicMock()) 
+patch_torch_load = patch("torch.load",                          return_value={})
+patch_yolo       = patch("ultralytics.YOLO",                    MagicMock())
+patch_timm       = patch("timm.create_model",                   MagicMock())
 
-patch_supabase_create.start()
+patch_supabase.start()
+patch_mlflow_dl.start()
+patch_mlflow_uri.start()
+patch_os_rename.start()
+patch_torch_load.start()
 patch_yolo.start()
 patch_timm.start()
-patch_torch_load.start()
-patch_mlflow.start()
-patch_pull.start()
 
-# Import SAU KHI tất cả patch đã active
 from api import app
 client = TestClient(app)
 
