@@ -104,6 +104,22 @@ https://github.com/user-attachments/assets/7d18e0cb-dba9-4d97-8319-41e1005efcc8
     * **Inference Stream:** `http://localhost:8000/video_feed`
     * **Audit Logs:** `http://localhost:8000/api/violations`
 
+### Alternative: Run via Pre-built Docker Image (Production-Ready)
+
+For enterprise clients preferring immutable deployments without building from source, the inference engine is continuously published to the Docker Hub Registry via our CI/CD pipeline.
+
+1.  **Pull the latest container image:**
+    ```bash
+    docker pull nhatminh115/ppe_system:latest
+    ```
+
+2.  **Execute via Compose (ensure your docker-compose.yml uses the `image` directive):**
+    ```bash
+    docker-compose up -d
+    ```
+    
+*(View the official repository on [Docker Hub](https://hub.docker.com/r/nhatminh115/ppe_system))*
+
 ---
 ## 5. Future Roadmap: Closed-Loop MLOps
 
@@ -127,4 +143,5 @@ To explore my comprehensive approach to Cloud-Native MLOps and Data Drift Observ
 
 ## 7. License
 MIT License - See `LICENSE` for details.
+
 
