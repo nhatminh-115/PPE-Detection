@@ -206,27 +206,22 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# 1. Environment Variables & Secrets (CRITICAL)
 .env
 
-# 2. Python Cache & Compilation Artifacts
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 
-# 3. Heavy Artifacts & Dynamic Model Weights
 *.pt
 *.pth
 *.onnx
 
-# 4. Data & Local Caches (Volume Mounts)
 datasets/
 model_cache/
 temp_uploads/
 violation_crops/
 
-# 5. IDE & OS Generated Files
 .vscode/
 .idea/
 .DS_Store

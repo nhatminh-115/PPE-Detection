@@ -3,6 +3,7 @@ import cv2
 import time
 import shutil
 import torch
+import logging
 import numpy as np
 import timm
 import concurrent.futures
@@ -10,7 +11,7 @@ from PIL import Image
 from torchvision import transforms
 from ultralytics import YOLO
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, Form, UploadFile, File
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -23,19 +24,22 @@ except ImportError:
     WBF_AVAILABLE = False
 
 import mlflow
-from mlflow.tracking import MlflowClient
-from supabase import create_client, Client
+from supabase import create_client
 
 # ==============================================================================
-# 1. CONFIGURATION & ENVIRONMENT
+# 1. CONFIGURATION & LOGGING
 # ==============================================================================
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(message)s")
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
-USE_EMA        = True   
-BOX_EMA_ALPHA  = 0.6    
-EMA_ALPHA      = 0.3
-HYSTERESIS_MARGIN = 0.125
+USE_EMA              = True   
+BOX_EMA_ALPHA        = 0.6    
+EMA_ALPHA            = 0.3
+HYSTERESIS_MARGIN    = 0.125
 ALERT_TIME_THRESHOLD = 3.0
+GRACE_PERIOD_SEC     = 10.0
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -77,86 +81,103 @@ os.makedirs("violation_crops", exist_ok=True)
 os.makedirs("temp_uploads", exist_ok=True)
 
 # ==============================================================================
-# 2. EXTERNAL SERVICES INIT (MLFLOW & SUPABASE)
+# 2. EXTERNAL SERVICES (LAZY INITIALIZATION)
 # ==============================================================================
-def init_supabase() -> Client:
-    if SUPABASE_URL and SUPABASE_KEY:
-        print("[SYSTEM] Supabase connection initialized.")
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
-    raise RuntimeError("[FATAL] Supabase credentials missing. Halt system.")
-
-supabase_client = init_supabase()
+supabase_client = None
 db_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 reported_ids = set()
 
+def get_supabase_client():
+    """Implements lazy initialization for Supabase to prevent CI/CD import crashes."""
+    global supabase_client
+    if supabase_client is None:
+        if SUPABASE_URL and SUPABASE_KEY:
+            try:
+                supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+                logger.info("Supabase connection successfully initialized.")
+            except Exception as e:
+                logger.error(f"Failed to initialize Supabase: {e}")
+        else:
+            logger.warning("Supabase credentials missing. Remote logging disabled.")
+    return supabase_client
+
 def log_violation_to_supabase(tracker_id, missing_items, missing_probs, crop_img):
+    """Asynchronously dispatches violation events and localized crops to Supabase."""
     try:
         timestamp_now = int(time.time())
         img_filename = f"violation_crops/ID{tracker_id}_{timestamp_now}.jpg"
+        
         if crop_img is not None and crop_img.size > 0:
             cv2.imwrite(img_filename, crop_img)
             
-        violations_list = []
-        for item, prob in zip(missing_items, missing_probs):
-            violations_list.append({
+        violations_list = [
+            {
                 "tracker_id": int(tracker_id),
                 "image_path": img_filename,
                 "violation_type": f"none_{item}",
                 "confidence": float(prob)
-            })
+            }
+            for item, prob in zip(missing_items, missing_probs)
+        ]
             
         data = {
             "violations": violations_list,
             "status": "Warning"
         }
         
-        if supabase_client:
-            supabase_client.table("ppe_violations").insert(data).execute()
-            print(f"[DB] Logged violation ID:{tracker_id} successfully.")
+        client = get_supabase_client()
+        if client:
+            client.table("ppe_violations").insert(data).execute()
+            logger.info(f"Database sync successful for violation ID: {tracker_id}.")
     except Exception as e:
-        print(f"[ERROR] Logging failed: {e}")
+        logger.error(f"Database logging execution failed: {e}")
 
 def pull_artifact_from_mlflow_run(run_id, artifact_path, cache_dir="model_cache"):
+    """Fetches model artifacts idempotently from MLflow registry."""
     if not MLFLOW_URI:
-        raise ValueError("[FATAL] MLFLOW_TRACKING_URI is not set in .env")
+        logger.warning("MLFLOW_TRACKING_URI is not set. Assuming local artifact execution.")
+        return os.path.join(cache_dir, f"{run_id}_{os.path.basename(artifact_path)}")
         
     file_name = os.path.basename(artifact_path)
     cached_file_path = os.path.join(cache_dir, f"{run_id}_{file_name}")
     
     if os.path.exists(cached_file_path):
-        print(f"[SYSTEM] Cache HIT! Loading artifact directly from: {cached_file_path}")
+        logger.info(f"Cache HIT. Utilizing local artifact: {cached_file_path}")
         return cached_file_path
         
     mlflow.set_tracking_uri(MLFLOW_URI)
-    print(f"[SYSTEM] Cache MISS! Fetching artifact from Run {run_id[:8]}...")
+    logger.info(f"Cache MISS. Fetching artifact from remote Run ID: {run_id[:8]}...")
     
     model_uri = f"runs:/{run_id}/{artifact_path}"
     downloaded_path = mlflow.artifacts.download_artifacts(artifact_uri=model_uri, dst_path=cache_dir)
     os.rename(downloaded_path, cached_file_path)
     
-    print(f"[SYSTEM] Fetched and cached successfully to: {cached_file_path}")
+    logger.info(f"Artifact fetched and cached successfully.")
     return cached_file_path
 
 # ==============================================================================
-# 3. GLOBAL ML MODELS (LIFESPAN MANAGEMENT)
+# 3. GLOBAL INFERENCE ENGINES
 # ==============================================================================
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print(f"[SYSTEM] Init Models on Device: {device} | WBF: {WBF_AVAILABLE}")
+logger.info(f"Inference Device initialized: {device} | WBF Engine: {WBF_AVAILABLE}")
 
 model1_path = pull_artifact_from_mlflow_run(run_id="b52f0641a3fe41899bb4c620fdef053d", artifact_path="weights/best.pt")
 model_stage2_path = pull_artifact_from_mlflow_run(run_id="e44391ef94b54ce3b867d46b7ce33ec3", artifact_path="weights/best_stage2_effnet.pt")
 model2_path = "yolo26l.pt"
 
+# Load Stage 1 Ensembles
 model1 = YOLO(model1_path)
 model1.predict(torch.zeros((1, 3, 1280, 1280)).to(device), imgsz=1280) 
 model2 = YOLO(model2_path)
 
+# Load Stage 2 Classifier
 model_stage2 = timm.create_model('tf_efficientnetv2_b0', pretrained=False, num_classes=NUM_CLASSES)
 model_stage2.load_state_dict(torch.load(model_stage2_path, map_location=device))
 model_stage2.eval().to(device)
 
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
+# FastAPI Initialization
 app = FastAPI(title="PPE Detection OS API", version="3.0.0")
 app.mount("/violation_crops", StaticFiles(directory="violation_crops"), name="violation_crops")
 templates = Jinja2Templates(directory="templates")
@@ -169,7 +190,7 @@ class StreamState:
 stream_state = StreamState()
 
 # ==============================================================================
-# 4. HELPER FUNCTIONS 
+# 4. CORE ALGORITHMIC LOGIC
 # ==============================================================================
 def extract_boxes(results, img_w, img_h, class_filter=None):
     boxes, scores, labels = [], [], []
@@ -201,6 +222,7 @@ def fuse_boxes(b1, s1, l1, b2, s2, l2, img_w, img_h):
     return fused_boxes, np.array(fused_scores, dtype=float)
 
 def classify_ppe_batch(model_stage2, frame, boxes, device):
+    """Executes EfficientNetV2 inference and XAI Forward-CAM Color Penalization."""
     img_h, img_w = frame.shape[:2]
     tensors, valid_idx, raw_crops = [], [], []
 
@@ -234,6 +256,7 @@ def classify_ppe_batch(model_stage2, frame, boxes, device):
         logits   = model_stage2.classifier(pooled)
         probs    = torch.sigmoid(logits).cpu().numpy()
 
+        # Generate Class Activation Map (CAM) for the hardhat neuron
         weight_hardhat = model_stage2.classifier.weight[0] 
         cam = torch.einsum('bchw,c->bhw', features, weight_hardhat) 
         cam = torch.relu(cam) 
@@ -241,7 +264,7 @@ def classify_ppe_batch(model_stage2, frame, boxes, device):
     for idx_in_batch, original_idx in enumerate(valid_idx):
         prob_hardhat = probs[idx_in_batch][0]
         
-        # Chi kich hoat XAI neu model dang 'nghi' la co mu (prob > 0.4)
+        # XAI Intervention: Trigger Color Penalizer if probability is anomalously high
         if prob_hardhat > 0.4:
             c = cam[idx_in_batch]
             c_max = c.max()
@@ -253,27 +276,22 @@ def classify_ppe_batch(model_stage2, frame, boxes, device):
             h, w = crop_img.shape[:2]
             c_resized = cv2.resize(c_np, (w, h))
             
-            # Tao mat nạ (Mask) cho nhung vung ma model chu y nhat
+            # Isolate highly activated spatial regions
             mask = c_resized > 0.5 
             
             if mask.sum() > 10: 
-                # Chuyen doi khong gian mau RGB sang HSV
                 hsv = cv2.cvtColor(crop_img, cv2.COLOR_BGR2HSV)
                 
-                # Trich xuat kenh S (Bao hoa) va V (Do sang)
                 s_channel = hsv[:, :, 1]
                 v_channel = hsv[:, :, 2] 
                 
-                # Tinh toan dac trung trung binh tren vung mat na (Masked Average)
                 mean_saturation = s_channel[mask].mean()
                 mean_brightness = v_channel[mask].mean()
                 
-                # Luat Trung phat Kep (Dual-Penalty Rule)
+                # Dual-Penalty Heuristic execution
                 if mean_brightness < 70:
-                    # Vung qua toi → toc den, bong toi, khong phai mu
                     probs[idx_in_batch][0] -= 0.55
                 elif mean_saturation < 80:
-                    # Sang trung binh nhung nhat mau → be tong, vai xam, khong phai mu bao ho
                     probs[idx_in_batch][0] -= 0.35
 
                 probs[idx_in_batch][0] = max(0.0, probs[idx_in_batch][0])
@@ -284,6 +302,7 @@ def classify_ppe_batch(model_stage2, frame, boxes, device):
     return results
 
 def get_next_state(class_name, prob, current_state):
+    """Evaluates finite state machine transitions utilizing mathematical hysteresis."""
     th = PPE_THRESHOLDS[class_name]
     if current_state is None:
         if prob >= th['ok']:   return 2
@@ -300,9 +319,9 @@ def get_next_state(class_name, prob, current_state):
         if prob >= th['warn'] + HYSTERESIS_MARGIN: return 2 if prob >= th['ok'] + HYSTERESIS_MARGIN else 1
         return 0
 
-def update_ema_and_decide(raw_results, tracker_ids, boxes, frame, ppe_ema, ppe_state, violation_timer):
+def update_ema_and_decide(raw_results, tracker_ids, boxes, frame, ppe_ema, ppe_state, violation_timer, current_time):
+    """Processes temporal smoothing and orchestrates violation accumulation logic."""
     smoothed = []
-    current_time = time.time()
 
     for tid, result, box in zip(tracker_ids, raw_results, boxes):
         if result is None:
@@ -320,7 +339,6 @@ def update_ema_and_decide(raw_results, tracker_ids, boxes, frame, ppe_ema, ppe_s
         current_states = ppe_state.get(tid, [None] * len(LABEL_COLS))
         new_states = [get_next_state(LABEL_COLS[i], avg_probs[i], current_states[i]) for i in range(len(LABEL_COLS))]
 
-        # Tích lũy thời gian warn + violation
         if tid not in violation_timer:
             violation_timer[tid] = {"duration": 0.0, "last_tick": current_time}
 
@@ -329,17 +347,12 @@ def update_ema_and_decide(raw_results, tracker_ids, boxes, frame, ppe_ema, ppe_s
 
         min_state = min(new_states)
         if min_state < 2:
-            # Đang ở WARN hoặc VIOLATION → cộng dồn
             violation_timer[tid]["duration"] += elapsed
         else:
-            # Về SAFE → reset hoàn toàn
             violation_timer[tid]["duration"] = 0.0
 
-        # Chỉ báo khi tích lũy đủ 3s VÀ chưa từng báo
-        if (violation_timer[tid]["duration"] >= ALERT_TIME_THRESHOLD
-                and tid not in reported_ids):
-
-            reported_ids.add(tid)  # không báo lại
+        if (violation_timer[tid]["duration"] >= ALERT_TIME_THRESHOLD and tid not in reported_ids):
+            reported_ids.add(tid) 
 
             missing_items = [LABEL_COLS[i] for i, s in enumerate(new_states) if s == 0]
             missing_probs = [avg_probs[i] for i, s in enumerate(new_states) if s == 0]
@@ -357,17 +370,22 @@ def update_ema_and_decide(raw_results, tracker_ids, boxes, frame, ppe_ema, ppe_s
 
     return smoothed
 
-def garbage_collection(active_ids, *state_dicts):
-    active_set = set(active_ids)
-    for d in state_dicts:
-        for k in list(d.keys()):
-            if k not in active_set:
+def garbage_collection(active_ids, current_time, last_seen_timer, *state_dicts):
+    """Executes state cleanup utilizing Time-To-Live (TTL) grace periods."""
+    for tid in active_ids:
+        last_seen_timer[tid] = current_time
+        
+    stale_keys = [k for k, t in last_seen_timer.items() if current_time - t > GRACE_PERIOD_SEC]
+    
+    for k in stale_keys:
+        for d in state_dicts:
+            if k in d:
                 del d[k]
-    stale_reported = set(reported_ids) - active_set
-    for k in stale_reported:
         reported_ids.discard(k)
+        del last_seen_timer[k]
 
 def draw_ppe_result(frame, box, ppe_result, tracker_id):
+    """Renders real-time bounding boxes and probabilistic telemetry on the active frame."""
     x1, y1, x2, y2 = map(int, box)
     if ppe_result is None:
         cv2.rectangle(frame, (x1, y1), (x2, y2), COLOR_TRACK, 2)
@@ -399,9 +417,10 @@ def draw_ppe_result(frame, box, ppe_result, tracker_id):
         cv2.putText(frame, f"{lbl[:4]}:{prob:.2f}", (x1 + 53, bar_y + i*11 + 7), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (200, 200, 200), 1)
 
 # ==============================================================================
-# 5. GENERATOR & API ROUTES
+# 5. PIPELINE GENERATOR & API ROUTES
 # ==============================================================================
 def generate_frames():
+    """Asynchronous frame generator maintaining core pipeline state."""
     tracker = sv.ByteTrack(
         track_activation_threshold=0.20,
         lost_track_buffer=240,
@@ -411,10 +430,9 @@ def generate_frames():
 
     last_tracked     = sv.Detections.empty()
     last_ppe_results = []
-    ppe_ema, box_ema, ppe_state, violation_timer = {}, {}, {}, {}
+    ppe_ema, box_ema, ppe_state, violation_timer, last_seen_timer = {}, {}, {}, {}, {}
     
     frame_count = 0
-    prev_time   = time.time()
     cap = None
 
     while True:
@@ -426,19 +444,19 @@ def generate_frames():
                 time.sleep(1)
                 continue
                 
-            print(f"[SYSTEM] Connecting to Video Stream: {stream_state.source}")
+            logger.info(f"Establishing stream connection: {stream_state.source}")
             cap = cv2.VideoCapture(stream_state.source)
             stream_state.trigger_restart = False
             
             if not cap.isOpened():
-                print("[ERROR] Cannot open video source.")
+                logger.error("Failed to acquire video stream.")
                 cap = None
                 stream_state.source = None
                 continue
 
         ret, frame = cap.read()
         if not ret: 
-            print("[SYSTEM] End of video stream.")
+            logger.info("Video stream reached EOF.")
             cap.release()
             cap = None
             stream_state.source = None
@@ -446,6 +464,7 @@ def generate_frames():
 
         frame_count += 1
         img_h, img_w = frame.shape[:2]
+        current_time = time.time()
 
         if frame_count % DETECT_EVERY == 0:
             future1 = executor.submit(model1.predict, frame, conf=CONF_M1, iou=IOU_NMS, device=device, imgsz=1280, verbose=False)
@@ -471,11 +490,11 @@ def generate_frames():
                 tracked.xyxy = np.array(smoothed_boxes)
 
                 raw_results = classify_ppe_batch(model_stage2, frame, tracked.xyxy, device)
-                ppe_results = update_ema_and_decide(raw_results, tracked.tracker_id, tracked.xyxy, frame, ppe_ema, ppe_state, violation_timer)
-                garbage_collection(tracked.tracker_id, ppe_ema, box_ema, ppe_state, violation_timer)
+                ppe_results = update_ema_and_decide(raw_results, tracked.tracker_id, tracked.xyxy, frame, ppe_ema, ppe_state, violation_timer, current_time)
+                garbage_collection(tracked.tracker_id, current_time, last_seen_timer, ppe_ema, box_ema, ppe_state, violation_timer)
             else:
                 ppe_results = []
-                garbage_collection([], ppe_ema, box_ema, ppe_state, violation_timer)
+                garbage_collection([], current_time, last_seen_timer, ppe_ema, box_ema, ppe_state, violation_timer)
 
             last_tracked, last_ppe_results = tracked, ppe_results
         else:
@@ -485,15 +504,11 @@ def generate_frames():
         if len(tracked) > 0 and tracked.tracker_id is not None:
             for box, tid, ppe_result in zip(tracked.xyxy, tracked.tracker_id, ppe_results):
                 draw_ppe_result(annotated, box, ppe_result, tid)
-
-        fps = 1 / (time.time() - prev_time)
-        prev_time = time.time()
         
         target_height = 720
         scale = target_height / img_h
         target_width = int(img_w * scale)
         display = cv2.resize(annotated, (target_width, target_height))
-        cv2.putText(display, f"API FPS: {fps:.1f}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         
         ret, buffer = cv2.imencode('.jpg', display)
         frame_bytes = buffer.tobytes()
@@ -503,14 +518,17 @@ def generate_frames():
 
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request):
+    """Entrypoint for the Single Page Application UI."""
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/video_feed")
 def video_feed():
+    """Endpoint for streaming MJPEG inference data."""
     return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 @app.post("/upload_video")
 async def upload_video(video_file: UploadFile = File(...)):
+    """Handles dynamic video injections for the pipeline."""
     try:
         file_path = f"temp_uploads/{video_file.filename}"
         with open(file_path, "wb") as buffer:
@@ -519,18 +537,22 @@ async def upload_video(video_file: UploadFile = File(...)):
         stream_state.source = file_path
         stream_state.trigger_restart = True
         
-        return {"status": "success", "message": f"Loaded {video_file.filename}"}
+        return {"status": "success", "message": f"Source injected: {video_file.filename}"}
     except Exception as e:
+        logger.error(f"Video injection failed: {e}")
         return {"status": "error", "message": str(e)}
 
 @app.get("/api/violations")
 def get_violations():
-    if not supabase_client: return {"data": []}
-    res = supabase_client.table("ppe_violations").select("*").order("created_at", desc=True).limit(20).execute()
+    """Retrieves recent violation payloads from the Supabase registry."""
+    client = get_supabase_client()
+    if not client: return {"data": []}
+    res = client.table("ppe_violations").select("*").order("created_at", desc=True).limit(20).execute()
     return {"data": res.data}
 
 @app.post("/api/flush")
 def flush_images():
+    """Purges the local blob storage for evidence crops."""
     try:
         count = 0
         for f in os.listdir("violation_crops"):
@@ -538,8 +560,10 @@ def flush_images():
             if os.path.isfile(file_path):
                 os.remove(file_path)
                 count += 1
-        return {"status": "success", "message": f"Flushed {count} images."}
+        logger.info(f"Local storage purged. {count} objects removed.")
+        return {"status": "success", "message": f"Flushed {count} objects."}
     except Exception as e:
+        logger.error(f"Storage purge failed: {e}")
         return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":

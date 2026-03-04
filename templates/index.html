@@ -1,243 +1,893 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PPE Vision - MLOps Dashboard</title>
+    <title>PPE Vision — Operations Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
-        .glass-panel { background: rgba(30, 41, 59, 0.8); backdrop-filter: blur(12px); border: 1px solid #334155; }
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #080c14;
+            color: #c9d1d9;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            overflow: hidden;
+        }
+
+        :root {
+            --border: #1e2d3d;
+            --surface: #0d1117;
+            --surface-2: #161b22;
+            --surface-3: #1c2333;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #484f58;
+            --accent: #388bfd;
+            --accent-dim: #1f3a5c;
+            --danger: #f85149;
+            --danger-dim: #3d1a1a;
+            --success: #3fb950;
+            --success-dim: #1a3d1e;
+        }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+        .sidebar {
+            width: 260px;
+            flex-shrink: 0;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 24px 20px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .brand-name {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--text-primary);
+        }
+
+        .brand-sub {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            letter-spacing: 0.08em;
+            margin-top: 4px;
+        }
+
+        .nav-section {
+            padding: 16px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .nav-label {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            padding: 0 8px;
+            margin-bottom: 6px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 9px 10px;
+            border-radius: 6px;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .nav-item:hover { background: var(--surface-2); color: var(--text-primary); }
+
+        .nav-item.active {
+            background: var(--surface-3);
+            color: var(--text-primary);
+            border-color: var(--border);
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--success);
+            flex-shrink: 0;
+        }
+
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .status-dot.live { animation: pulse 1.5s infinite; }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 12px;
+        }
+
+        .control-group { margin-bottom: 20px; }
+
+        .control-label {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .file-upload-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 9px 14px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s, background 0.15s;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .file-upload-btn:hover {
+            border-color: var(--accent);
+            color: var(--text-primary);
+            background: var(--accent-dim);
+        }
+
+        .db-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+
+        .db-status-text { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+        .db-status-sub { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); }
+
+        .sidebar-footer {
+            padding: 16px 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            letter-spacing: 0.02em;
+            transition: opacity 0.15s;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .btn-primary:hover { opacity: 0.85; }
+        .btn-danger-bg { background: var(--danger) !important; }
+
+        .main {
+            flex: 1;
+            background: var(--surface);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .topbar {
+            height: 52px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .topbar-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .topbar-divider { width: 1px; height: 14px; background: var(--border); }
+        .topbar-sub { font-size: 12px; color: var(--text-muted); }
+
+        .status-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 500;
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: var(--surface-2);
+            color: var(--text-muted);
+            letter-spacing: 0.05em;
+        }
+
+        .status-badge.live {
+            border-color: var(--success);
+            background: var(--success-dim);
+            color: var(--success);
+        }
+
+        .tab-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: 20px 24px 24px;
+        }
+
+        .video-wrapper {
+            flex: 1;
+            background: #000;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .video-placeholder-title {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-align: center;
+        }
+
+        .video-placeholder-sub {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 6px;
+            opacity: 0.5;
+            text-align: center;
+        }
+
+        .btn-secondary {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: border-color 0.15s, color 0.15s;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .btn-secondary:hover { border-color: var(--accent); color: var(--text-primary); }
+        .btn-secondary.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+        .violations-container { flex: 1; overflow-y: auto; margin-top: 16px; }
+
+        .violations-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 12px;
+        }
+
+        .violation-card {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: border-color 0.15s;
+        }
+
+        .violation-card:hover { border-color: #2d3f52; }
+
+        .card-image {
+            height: 160px;
+            background: var(--surface-3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-image img { width: 100%; height: 100%; object-fit: cover; }
+
+        .card-id-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 500;
+            background: rgba(8, 12, 20, 0.85);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 2px 7px;
+            border-radius: 4px;
+        }
+
+        .card-body { padding: 12px; }
+
+        .card-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .card-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted); }
+        .card-status { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+        .card-violations-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .violation-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+
+        .vtag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 3px;
+            background: var(--danger-dim);
+            color: var(--danger);
+            border: 1px solid rgba(248, 81, 73, 0.2);
+        }
+
+        #toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 100;
+        }
+
+        .toast {
+            font-size: 12px;
+            font-weight: 500;
+            padding: 10px 16px;
+            border-radius: 6px;
+            border: 1px solid;
+            transition: opacity 0.3s;
+            max-width: 300px;
+        }
+
+        .toast.success { background: rgba(26,61,30,0.95); border-color: rgba(63,185,80,0.4); color: #3fb950; }
+        .toast.error   { background: rgba(61,26,26,0.95);  border-color: rgba(248,81,73,0.4);  color: #f85149; }
+
+        /* Lightbox */
+        .lightbox {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .lightbox.hidden { display: none; }
+
+        .lightbox-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(8, 12, 20, 0.88);
+            backdrop-filter: blur(6px);
+        }
+
+        .lightbox-panel {
+            position: relative;
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            max-width: 860px;
+            width: 100%;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+            animation: lb-in 0.18s ease;
+        }
+
+        @keyframes lb-in {
+            from { opacity: 0; transform: scale(0.96); }
+            to   { opacity: 1; transform: scale(1); }
+        }
+
+        .lightbox-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .lightbox-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .lightbox-title .lb-id {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-secondary);
+            background: var(--surface-3);
+            border: 1px solid var(--border);
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .lightbox-close {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+
+        .lightbox-close:hover {
+            background: var(--surface-3);
+            border-color: var(--border);
+            color: var(--text-primary);
+        }
+
+        .lightbox-image-wrap {
+            flex: 1;
+            min-height: 0;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .lightbox-image-wrap img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        .lightbox-footer {
+            flex-shrink: 0;
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .lightbox-time {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .lightbox-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+
+        .violation-card { cursor: pointer; }
     </style>
 </head>
-<body class="h-screen w-screen flex overflow-hidden">
+<body>
 
-    <aside class="w-80 glass-panel flex flex-col p-6 shadow-2xl z-10 flex-shrink-0 border-r border-slate-700">
-        <div class="mb-8 border-b border-slate-700 pb-4">
-            <h1 class="text-2xl font-bold text-white tracking-wider flex items-center gap-2">
-                PPE <span class="text-emerald-400">VISION</span>
-            </h1>
-            <p class="text-xs text-slate-400 mt-1 tracking-widest uppercase">Production MLOps</p>
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="brand-name">PPE Vision</div>
+            <div class="brand-sub">OPERATIONS CENTER / v2.1</div>
         </div>
 
-        <div class="space-y-2 mb-8">
-            <button onclick="switchTab('live-tab')" id="nav-live" class="w-full py-3 px-4 text-left rounded-lg bg-slate-800 text-white font-medium border border-slate-600 transition-colors">
-                🔴 Live Inference Feed
+        <div class="nav-section">
+            <div class="nav-label">Views</div>
+            <button onclick="switchTab('live-tab')" id="nav-live" class="nav-item active">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="1" y="2" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                    <circle cx="8" cy="7" r="2" stroke="currentColor" stroke-width="1.3"/>
+                    <path d="M5 14h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Live Feed
             </button>
-            <button onclick="switchTab('log-tab')" id="nav-log" class="w-full py-3 px-4 text-left rounded-lg text-slate-400 hover:bg-slate-800/50 font-medium transition-colors">
-                📋 Violation Logs & Data
+            <button onclick="switchTab('log-tab')" id="nav-log" class="nav-item">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="2" y="1.5" width="12" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M5 5.5h6M5 8h4M5 10.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                </svg>
+                Violation Logs
             </button>
         </div>
 
-        <div class="space-y-6 flex-1 overflow-y-auto custom-scrollbar pr-2">
-            <div class="space-y-3">
-                <h2 class="text-xs font-semibold text-slate-300 uppercase tracking-widest">Video Injection</h2>
-                <div class="flex flex-col gap-2">
-                    <label for="video-upload" id="upload-label" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-medium transition-colors border border-slate-600 cursor-pointer text-center">
-                        📂 Select Local Video
-                    </label>
-                    <input type="file" id="video-upload" class="hidden" accept="video/mp4,video/avi" onchange="uploadVideoFile()">
-                </div>
+        <div class="sidebar-content">
+            <div class="control-group">
+                <span class="control-label">Video Source</span>
+                <label for="video-upload" class="file-upload-btn">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8 10.5V3M8 3L5.5 5.5M8 3L10.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M2.5 12.5h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    Select Local Video
+                </label>
+                <input type="file" id="video-upload" class="hidden" accept="video/mp4,video/avi" onchange="uploadVideoFile()">
+                <div id="file-name" style="font-size:10px;color:var(--text-muted);margin-top:6px;font-family:'JetBrains Mono',monospace;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">No file selected</div>
             </div>
-            
-            <div class="space-y-3">
-                <h2 class="text-xs font-semibold text-slate-300 uppercase tracking-widest">Database Sync</h2>
-                <div class="p-3 bg-slate-800 rounded-lg border border-slate-700">
-                    <div class="flex items-center space-x-2 text-sm">
-                        <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                        <span class="text-slate-300 font-medium">Supabase Connected</span>
+
+            <div class="control-group">
+                <span class="control-label">Database</span>
+                <div class="db-status">
+                    <div class="status-dot"></div>
+                    <div>
+                        <div class="db-status-text">Supabase</div>
+                        <div class="db-status-sub">Connected</div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="mt-4 pt-4 border-t border-slate-700">
-            <button id="btn-stream" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium shadow-lg transition-colors" onclick="toggleStream()">
-                Initialize Inference Engine
+        <div class="sidebar-footer">
+            <button id="btn-stream" class="btn-primary" onclick="toggleStream()">
+                Start Inference Engine
             </button>
         </div>
     </aside>
 
-    <main class="flex-1 bg-slate-900 relative flex flex-col p-6 overflow-hidden">
-        
-        <div id="live-tab" class="h-full flex flex-col">
-            <header class="h-16 glass-panel rounded-xl mb-4 px-6 flex justify-between items-center border border-slate-700">
-                <h2 class="text-lg font-semibold text-white">Zone A - Active Monitoring</h2>
-                <span id="stream-status-badge" class="px-4 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-400 font-mono">OFFLINE</span>
-            </header>
+    <main class="main">
+        <div class="topbar">
+            <div class="topbar-title">
+                <span id="topbar-title-text">Live Inference — Zone A</span>
+                <div class="topbar-divider"></div>
+                <span class="topbar-sub" id="topbar-sub-text">Monitor active</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div id="log-actions" style="display:none;gap:8px;">
+                    <button onclick="fetchViolations()" class="btn-secondary">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <path d="M8 1v4l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Refresh
+                    </button>
+                    <button onclick="flushImages()" class="btn-secondary danger">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M2.5 4.5h11M6 4.5V3h4v1.5M5.5 4.5l.5 8h4l.5-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        Flush Images
+                    </button>
+                </div>
+                <span id="stream-status-badge" class="status-badge">OFFLINE</span>
+            </div>
+        </div>
 
-            <div class="flex-1 glass-panel rounded-xl overflow-hidden relative border border-slate-700 flex items-center justify-center bg-black">
-                <img id="video-stream" src="" alt="Stream Offline" class="hidden w-full h-full object-contain">
-                <div id="offline-placeholder" class="text-center text-slate-500">
-                    <div>Engine is Standing By</div>
+        <div id="live-tab" class="tab-panel">
+            <div class="video-wrapper">
+                <img id="video-stream" src="" alt="" class="hidden" style="width:100%;height:100%;object-fit:contain;">
+                <div id="offline-placeholder">
+                    <div class="video-placeholder-title">Engine Standing By</div>
+                    <div class="video-placeholder-sub">Press "Start Inference Engine" to begin</div>
                 </div>
             </div>
         </div>
 
-        <div id="log-tab" class="h-full flex flex-col hidden">
-            <header class="h-16 glass-panel rounded-xl mb-4 px-6 flex justify-between items-center border border-slate-700">
-                <h2 class="text-lg font-semibold text-white">Supabase Violation Registry</h2>
-                <div class="flex gap-3">
-                    <button onclick="fetchViolations()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg">
-                        🔄 Refresh Data
-                    </button>
-                    <button onclick="flushImages()" class="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg">
-                        🗑️ Flush Local Images
-                    </button>
-                </div>
-            </header>
-
-            <div class="flex-1 glass-panel rounded-xl overflow-y-auto custom-scrollbar p-6 border border-slate-700">
-                <div id="violations-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    <div class="col-span-full text-center text-slate-500 py-10">Click 'Refresh Data' to pull from Supabase.</div>
+        <div id="log-tab" class="tab-panel hidden">
+            <div class="violations-container">
+                <div id="violations-grid" class="violations-grid">
+                    <div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">
+                        Click Refresh to pull records from Supabase.
+                    </div>
                 </div>
             </div>
         </div>
-
-        <div id="toast-container" class="absolute bottom-4 right-4 flex flex-col gap-2 z-50"></div>
     </main>
+
+    <div id="toast-container"></div>
+
+    <!-- Lightbox modal -->
+    <div id="lightbox" class="lightbox hidden" onclick="handleLightboxBackdropClick(event)">
+        <div class="lightbox-backdrop"></div>
+        <div class="lightbox-panel">
+            <div class="lightbox-header">
+                <div class="lightbox-title">
+                    Violation Detail
+                    <span class="lb-id" id="lb-id">ID —</span>
+                    <span class="lb-id" id="lb-time-header" style="color:var(--text-muted);"></span>
+                </div>
+                <button class="lightbox-close" onclick="closeLightbox()" title="Close (Esc)">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="lightbox-image-wrap">
+                <img id="lb-img" src="" alt="Violation">
+            </div>
+            <div class="lightbox-footer">
+                <span class="lightbox-time">Missing PPE</span>
+                <div class="lightbox-tags" id="lb-tags"></div>
+            </div>
+        </div>
+    </div>
 
     <script>
         let isStreaming = false;
 
-        // UI Tabs Switching
         function switchTab(tabId) {
-            document.getElementById('live-tab').classList.add('hidden');
-            document.getElementById('log-tab').classList.add('hidden');
-            document.getElementById(tabId).classList.remove('hidden');
+            const isLive = tabId === 'live-tab';
+            document.getElementById('live-tab').classList.toggle('hidden', !isLive);
+            document.getElementById('log-tab').classList.toggle('hidden', isLive);
+            document.getElementById('nav-live').className = 'nav-item' + (isLive ? ' active' : '');
+            document.getElementById('nav-log').className  = 'nav-item' + (!isLive ? ' active' : '');
 
-            document.getElementById('nav-live').className = "w-full py-3 px-4 text-left rounded-lg text-slate-400 hover:bg-slate-800/50 font-medium transition-colors";
-            document.getElementById('nav-log').className = "w-full py-3 px-4 text-left rounded-lg text-slate-400 hover:bg-slate-800/50 font-medium transition-colors";
-
-            if(tabId === 'live-tab') {
-                document.getElementById('nav-live').className = "w-full py-3 px-4 text-left rounded-lg bg-slate-800 text-white font-medium border border-slate-600 transition-colors";
+            const logActions = document.getElementById('log-actions');
+            if (isLive) {
+                logActions.style.display = 'none';
+                document.getElementById('topbar-title-text').textContent = 'Live Inference \u2014 Zone A';
+                document.getElementById('topbar-sub-text').textContent = 'Monitor active';
             } else {
-                document.getElementById('nav-log').className = "w-full py-3 px-4 text-left rounded-lg bg-slate-800 text-white font-medium border border-slate-600 transition-colors";
-                fetchViolations(); // Tu dong fetch khi chuyen tab
+                logActions.style.display = 'flex';
+                document.getElementById('topbar-title-text').textContent = 'Violation Registry';
+                document.getElementById('topbar-sub-text').textContent = 'Supabase sync';
+                fetchViolations();
             }
         }
 
-        // Stream Toggle
         function toggleStream() {
-            const videoElement = document.getElementById('video-stream');
+            const videoEl     = document.getElementById('video-stream');
             const placeholder = document.getElementById('offline-placeholder');
-            const btnStream = document.getElementById('btn-stream');
-            const statusBadge = document.getElementById('stream-status-badge');
+            const btn         = document.getElementById('btn-stream');
+            const badge       = document.getElementById('stream-status-badge');
+            const dot         = document.querySelector('.status-dot');
 
             isStreaming = !isStreaming;
+
             if (isStreaming) {
-                videoElement.src = "/video_feed";
-                videoElement.classList.remove('hidden');
+                videoEl.src = '/video_feed';
+                videoEl.classList.remove('hidden');
                 placeholder.classList.add('hidden');
-                
-                btnStream.textContent = "Halt Inference Engine";
-                btnStream.className = "w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-medium shadow-lg transition-colors";
-                statusBadge.textContent = "LIVE";
-                statusBadge.className = "px-4 py-1.5 bg-emerald-900/50 border border-emerald-700 rounded-lg text-sm text-emerald-400 font-mono";
+                btn.textContent = 'Stop Inference Engine';
+                btn.classList.add('btn-danger-bg');
+                badge.textContent = 'LIVE';
+                badge.className   = 'status-badge live';
+                dot.classList.add('live');
             } else {
-                videoElement.src = "";
-                videoElement.classList.add('hidden');
+                videoEl.src = '';
+                videoEl.classList.add('hidden');
                 placeholder.classList.remove('hidden');
-                
-                btnStream.textContent = "Initialize Inference Engine";
-                btnStream.className = "w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium shadow-lg transition-colors";
-                statusBadge.textContent = "OFFLINE";
-                statusBadge.className = "px-4 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-400 font-mono";
+                btn.textContent = 'Start Inference Engine';
+                btn.classList.remove('btn-danger-bg');
+                badge.textContent = 'OFFLINE';
+                badge.className   = 'status-badge';
+                dot.classList.remove('live');
             }
         }
 
-        // Video Upload
         async function uploadVideoFile() {
             const fileInput = document.getElementById('video-upload');
             const file = fileInput.files[0];
             if (!file) return;
-
+            document.getElementById('file-name').textContent = file.name;
             try {
                 const formData = new FormData();
                 formData.append('video_file', file);
                 const response = await fetch('/upload_video', { method: 'POST', body: formData });
-                const result = await response.json();
-                
+                const result   = await response.json();
                 if (result.status === 'success') {
-                    showToast(result.message, "success");
-                    if (!isStreaming) toggleStream(); 
-                } else showToast("Upload failed", "error");
-            } catch (error) { showToast("Upload error.", "error"); }
+                    showToast(result.message, 'success');
+                    if (!isStreaming) toggleStream();
+                } else {
+                    showToast('Upload failed.', 'error');
+                }
+            } catch { showToast('Network error during upload.', 'error'); }
         }
 
-        // --- FETCH DU LIEU TU SUPABASE ---
         async function fetchViolations() {
             const grid = document.getElementById('violations-grid');
-            grid.innerHTML = '<div class="col-span-full text-center text-slate-400">Loading data from Supabase...</div>';
-            
+            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Fetching records\u2026</div>';
             try {
                 const response = await fetch('/api/violations');
-                const result = await response.json();
-                const data = result.data;
+                const result   = await response.json();
+                const data     = result.data;
 
                 if (!data || data.length === 0) {
-                    grid.innerHTML = '<div class="col-span-full text-center text-slate-500">No violations found in database.</div>';
+                    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">No records found.</div>';
                     return;
                 }
 
                 grid.innerHTML = '';
                 data.forEach(item => {
-                    // Extract data tu mang JSONB (Lay phan tu dau tien dai dien)
-                    const v_data = item.violations[0] || {};
-                    const imgPath = v_data.image_path ? `/${v_data.image_path}` : '';
-                    const timeStr = new Date(item.created_at).toLocaleTimeString();
-                    
+                    const v_data  = item.violations[0] || {};
+                    const imgPath = v_data.image_path ? '/' + v_data.image_path : '';
+                    const timeStr = new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+                    // Build card via DOM to avoid nested-quote escaping bugs
                     const card = document.createElement('div');
-                    card.className = "bg-slate-800 border border-slate-700 rounded-xl overflow-hidden hover:border-emerald-500 transition-colors shadow-lg";
-                    
-                    card.innerHTML = `
-                        <div class="h-48 bg-slate-900 flex items-center justify-center border-b border-slate-700 relative">
-                            ${imgPath ? `<img src="${imgPath}" class="w-full h-full object-cover" onerror="this.src=''; this.alt='Image flushed/missing'">` : '<span class="text-slate-600 text-sm">No Image Data</span>'}
-                            <div class="absolute top-2 right-2 bg-rose-600 text-white text-xs px-2 py-1 rounded font-bold">ID: ${v_data.tracker_id || 'N/A'}</div>
-                        </div>
-                        <div class="p-4">
-                            <div class="flex justify-between items-center mb-2">
-                                <span class="text-emerald-400 text-xs font-mono">${timeStr}</span>
-                                <span class="text-slate-400 text-xs">${item.status}</span>
-                            </div>
-                            <h3 class="text-white font-medium text-sm mb-2">Missing Items:</h3>
-                            <div class="flex flex-wrap gap-1">
-                                ${item.violations.map(v => `<span class="px-2 py-1 bg-rose-900/50 text-rose-300 rounded text-xs border border-rose-800">${v.violation_type.replace('none_','').toUpperCase()}</span>`).join('')}
-                            </div>
-                        </div>
-                    `;
+                    card.className = 'violation-card';
+
+                    // Image section
+                    const cardImage = document.createElement('div');
+                    cardImage.className = 'card-image';
+
+                    if (imgPath) {
+                        const img = document.createElement('img');
+                        img.src = imgPath;
+                        img.alt = 'Violation';
+                        img.addEventListener('error', function() {
+                            cardImage.innerHTML = '<span style="font-size:11px;color:var(--text-muted)">Image not found</span>';
+                        });
+                        cardImage.appendChild(img);
+                    } else {
+                        const placeholder = document.createElement('span');
+                        placeholder.style.cssText = 'font-size:11px;color:var(--text-muted)';
+                        placeholder.textContent = 'No image data';
+                        cardImage.appendChild(placeholder);
+                    }
+
+                    const idBadge = document.createElement('div');
+                    idBadge.className = 'card-id-badge';
+                    idBadge.textContent = 'ID ' + (v_data.tracker_id != null ? v_data.tracker_id : '—');
+                    cardImage.appendChild(idBadge);
+
+                    // Body section
+                    const cardBody = document.createElement('div');
+                    cardBody.className = 'card-body';
+
+                    const meta = document.createElement('div');
+                    meta.className = 'card-meta';
+                    meta.innerHTML = '<span class="card-time">' + timeStr + '</span><span class="card-status">' + item.status + '</span>';
+
+                    const label = document.createElement('div');
+                    label.className = 'card-violations-label';
+                    label.textContent = 'Missing PPE';
+
+                    const tagsDiv = document.createElement('div');
+                    tagsDiv.className = 'violation-tags';
+                    item.violations.forEach(v => {
+                        const tag = document.createElement('span');
+                        tag.className = 'vtag';
+                        tag.textContent = v.violation_type.replace('none_', '').toUpperCase();
+                        tagsDiv.appendChild(tag);
+                    });
+
+                    cardBody.appendChild(meta);
+                    cardBody.appendChild(label);
+                    cardBody.appendChild(tagsDiv);
+
+                    // Click to open lightbox
+                    card.addEventListener('click', function() {
+                        openLightbox(imgPath, v_data.tracker_id, timeStr, item.violations);
+                    });
+
+                    card.appendChild(cardImage);
+                    card.appendChild(cardBody);
                     grid.appendChild(card);
                 });
-            } catch (error) {
-                grid.innerHTML = '<div class="col-span-full text-center text-rose-500">Failed to fetch data from API.</div>';
+            } catch {
+                grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Failed to connect to API.</div>';
             }
         }
 
-        // --- XOA ANH CUC BO ---
         async function flushImages() {
-            if(!confirm("Are you sure you want to delete all local violation images? This cannot be undone.")) return;
+            if (!confirm('Delete all local violation images? This action cannot be undone.')) return;
             try {
                 const response = await fetch('/api/flush', { method: 'POST' });
-                const result = await response.json();
+                const result   = await response.json();
                 if (result.status === 'success') {
-                    showToast(result.message, "success");
-                    fetchViolations(); // Reload the grid so images show as missing
-                } else showToast("Flush failed.", "error");
-            } catch (error) { showToast("Network error.", "error"); }
+                    showToast(result.message, 'success');
+                    fetchViolations();
+                } else {
+                    showToast('Flush operation failed.', 'error');
+                }
+            } catch { showToast('Network error.', 'error'); }
         }
 
-        function showToast(message, type = 'info') {
+        function openLightbox(imgPath, trackerId, timeStr, violations) {
+            document.getElementById('lb-id').textContent = 'ID ' + (trackerId != null ? trackerId : '—');
+            document.getElementById('lb-time-header').textContent = timeStr;
+
+            const imgEl = document.getElementById('lb-img');
+            if (imgPath) {
+                imgEl.src = imgPath;
+                imgEl.style.display = '';
+            } else {
+                imgEl.src = '';
+                imgEl.style.display = 'none';
+            }
+
+            const tagsEl = document.getElementById('lb-tags');
+            tagsEl.innerHTML = '';
+            violations.forEach(function(v) {
+                const tag = document.createElement('span');
+                tag.className = 'vtag';
+                tag.textContent = v.violation_type.replace('none_', '').toUpperCase();
+                tagsEl.appendChild(tag);
+            });
+
+            document.getElementById('lightbox').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+
+        function handleLightboxBackdropClick(e) {
+            if (e.target === document.getElementById('lightbox') || e.target.classList.contains('lightbox-backdrop')) {
+                closeLightbox();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeLightbox();
+        });
+
+        function showToast(message, type) {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            let bgClass = type === 'success' ? 'bg-emerald-900/80 border-emerald-700 text-emerald-100' : 'bg-rose-900/80 border-rose-700 text-rose-100';
-            toast.className = `px-4 py-3 rounded-lg border shadow-lg text-sm backdrop-blur-md transition-opacity duration-300 ${bgClass}`;
+            toast.className = 'toast ' + (type || 'info');
             toast.textContent = message;
             container.appendChild(toast);
-            setTimeout(() => { toast.classList.add('opacity-0'); setTimeout(() => toast.remove(), 300); }, 3000);
+            setTimeout(function() {
+                toast.style.opacity = '0';
+                setTimeout(function() { toast.remove(); }, 300);
+            }, 3500);
         }
     </script>
 </body>
