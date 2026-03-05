@@ -1,4 +1,8 @@
 [![CI/CD Pipeline](https://github.com/nhatminh-115/PPE-Detection/actions/workflows/ci-cd-pipeline.yml/badge.svg)](https://github.com/nhatminh-115/PPE-Detection/actions/workflows/ci-cd-pipeline.yml)
+![Python](https://img.shields.io/badge/Python-3.11-blue)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.x-red)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Docker](https://img.shields.io/badge/Docker-Ready-blue)
 
 # PPE Detection
 
@@ -46,7 +50,15 @@ The infrastructure follows GitOps principles, ensuring the inference environment
 
 ---
 
-## Results and Images
+## 3. Model Performance
+
+| Model | Role | Dataset | Key Metrics | FPS (GPU) |
+|---|---|---|---|---|
+| YOLO11s | Primary Detector | VisDrone (fine-tuned) | mAP@50: ~68% | 45.8 |
+| YOLO26l | Secondary Detector | COCO (pretrained) | mAP@50: ~55% | 22.3 |
+| EfficientNetV2-B0 | PPE Classifier | Ultralytics PPE | F1: 92% · Precision: 97% · Recall: 88% | 39.1 |
+
+> Benchmarked on NVIDIA [GPU name], PyTorch 2.x, CUDA 12.x
 
 **EfficientNet Training Metrics**
 
@@ -55,6 +67,7 @@ The infrastructure follows GitOps principles, ensuring the inference environment
 **Yolo11s Training Metrics**
 
 <img width="2183" height="1105" alt="image" src="https://github.com/user-attachments/assets/83d2b745-9dc0-450c-af28-bdfd9b73d1dd" />
+
 
 **Supabase Database**
 
@@ -145,6 +158,7 @@ To explore my comprehensive approach to Cloud-Native MLOps and Data Drift Observ
 
 ## 7. License
 MIT License - See `LICENSE` for details.
+
 
 
 
