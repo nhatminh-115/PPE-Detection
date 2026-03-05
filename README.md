@@ -27,6 +27,11 @@ To mitigate domain shift between varying camera angles (aerial vs. close-circuit
 **Stage 2: Classification**
 Person tensors are classified using an **EfficientNetV2-B0** multi-label network. To ensure interpretability and suppress False Positives (e.g., misclassifying gray fabric as hardhats), we implemented a **Forward-CAM (Class Activation Map)** intercepting the `timm` feature extraction layer.
 
+
+![Forward-CAM Demo](docs/forward_cam_demo.gif)
+> **Left:** Without CAM — gray hardhat misclassified (WARN). 
+> **Right:** With CAM + HSV Penalizer — correctly identified as missing (MISS HARD).
+
 The activated spatial regions are subjected to a **Dual-Channel HSV Color Penalizer**:
 * **Value (Brightness) Penalty:** Regions with $V < 70$ receive a probability penalty (filtering dark hair/shadows).
 * **Saturation Penalty:** Regions with $S < 80$ receive a small penalty (filtering gray concrete/clothing).
@@ -75,23 +80,23 @@ The infrastructure follows GitOps principles, ensuring the inference environment
 
 **EfficientNet Training Metrics**
 
-<img width="2183" height="1105" alt="image" src="https://github.com/user-attachments/assets/3b3510ac-ed98-4ed1-ba45-359ae912a773" />
+![PPE Vision Architecture](docs/EfficientNet_metrics.png)
 
 **Yolo11s Training Metrics**
 
-<img width="2183" height="1105" alt="image" src="https://github.com/user-attachments/assets/83d2b745-9dc0-450c-af28-bdfd9b73d1dd" />
+![PPE Vision Architecture](docs/Yolo11s_metrics.png)
 
 
 **Supabase Database**
 
-<img width="2559" height="1395" alt="image" src="https://github.com/user-attachments/assets/f1cdcb07-20a2-4b91-b62e-58f70959e640" />
+![PPE Vision Architecture](docs/Supabase.png)
 
 
 **User Interface**
 
-<img width="2559" height="1462" alt="image" src="https://github.com/user-attachments/assets/b4eb1f13-f5f4-478f-b4c8-21d3a891af9f" />
+![PPE Vision Architecture](docs/UI_1.png)
 
-<img width="2559" height="1459" alt="image" src="https://github.com/user-attachments/assets/212b08e1-764d-460b-a091-cb2cb08f9c53" />
+![PPE Vision Architecture](docs/UI_2.png)
 
 **Video Demo**
 
@@ -171,6 +176,7 @@ To explore my comprehensive approach to Cloud-Native MLOps and Data Drift Observ
 
 ## 7. License
 MIT License - See `LICENSE` for details.
+
 
 
 
