@@ -25,7 +25,8 @@ patch_torch_load.start()
 patch_yolo.start()
 patch_timm.start()
 
-from api import app
+import src.api.routes
+from src.api.app import app
 client = TestClient(app)
 
 # ==============================================================================
