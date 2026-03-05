@@ -226,7 +226,5 @@ violation_crops/
 .idea/
 .DS_Store
 Thumbs.db
-app_1.py
-app_2.py
-sanity_check.py
-ultralytics_etl.py
+extras/
+
