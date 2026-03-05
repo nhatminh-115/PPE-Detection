@@ -29,7 +29,7 @@ Person tensors are classified using an **EfficientNetV2-B0** multi-label network
 
 
 ![Forward-CAM Demo](docs/forward_cam_demo.gif)
-> **Left:** Without CAM — gray hardhat misclassified (WARN). 
+> **Left:** Without CAM — gray hardhat misclassified (WARN).   
 > **Right:** With CAM + HSV Penalizer — correctly identified as missing (MISS HARD).
 
 The activated spatial regions are subjected to a **Dual-Channel HSV Color Penalizer**:
@@ -176,6 +176,7 @@ To explore my comprehensive approach to Cloud-Native MLOps and Data Drift Observ
 
 ## 7. License
 MIT License - See `LICENSE` for details.
+
 
 
 
