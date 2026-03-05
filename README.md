@@ -52,13 +52,26 @@ The infrastructure follows GitOps principles, ensuring the inference environment
 
 ## 3. Model Performance
 
-| Model | Role | Dataset | Key Metrics | FPS (GPU) |
-|---|---|---|---|---|
-| YOLO11s | Primary Detector | VisDrone (fine-tuned) | mAP@50: ~68% | 45.8 |
-| YOLO26l | Secondary Detector | COCO (pretrained) | mAP@50: ~55% | 22.3 |
-| EfficientNetV2-B0 | PPE Classifier | Ultralytics PPE | F1: 92% · Precision: 97% · Recall: 88% | 39.1 |
+### Stage 1: Detection Ensemble (VisDrone val set, 548 images)
 
-> Benchmarked on NVIDIA [GPU name], PyTorch 2.x, CUDA 12.x
+| Model | Precision | Recall | mAP@50 | FPS |
+|---|---|---|---|---|
+| YOLO11s (fine-tuned) | 0.760 | 0.611 | 0.684 | 45.8 |
+| YOLO26l (pretrained) | 0.590 | 0.356 | 0.418 | 22.3 |
+| **WBF Ensemble** | **0.556** | **0.764** | — | ~22* |
+
+*Bottleneck: YOLO26l. Both models run in parallel via ThreadPoolExecutor.
+
+> Ensemble design rationale: Higher recall (0.764 vs 0.611) prioritizes zero missed violations.
+> Residual false positives are suppressed downstream by the EfficientNetV2 + Forward-CAM classifier.
+
+### Stage 2: PPE Classifier (Ultralytics PPE dataset)
+
+| Model | Precision | Recall | F1 | FPS |
+|---|---|---|---|---|
+| EfficientNetV2-B0 | 0.97 | 0.88 | 0.92 | 39.1 |
+
+> Benchmarked on NVIDIA RTX 5070 Laptop GPU, PyTorch 2.10, CUDA 12.8
 
 **EfficientNet Training Metrics**
 
@@ -158,6 +171,7 @@ To explore my comprehensive approach to Cloud-Native MLOps and Data Drift Observ
 
 ## 7. License
 MIT License - See `LICENSE` for details.
+
 
 
 
