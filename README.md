@@ -104,7 +104,44 @@ https://github.com/user-attachments/assets/7d18e0cb-dba9-4d97-8319-41e1005efcc8
     * **Inference Stream:** `http://localhost:8000/video_feed`
     * **Audit Logs:** `http://localhost:8000/api/violations`
 
+### Alternative: Run via Pre-built Docker Image (Production-Ready)
+
+For enterprise clients preferring immutable deployments without building from source, the inference engine is continuously published to the Docker Hub Registry via our CI/CD pipeline.
+
+1.  **Pull the latest container image:**
+    ```bash
+    docker pull nhatminh115/ppe_system:latest
+    ```
+
+2.  **Execute via Compose (ensure your docker-compose.yml uses the `image` directive):**
+    ```bash
+    docker-compose up -d
+    ```
+    
+*(View the official repository on [Docker Hub](https://hub.docker.com/r/nhatminh115/ppe_system))*
+
+---
+## 5. Future Roadmap: Closed-Loop MLOps
+
+While the current architecture successfully decouples inference from state management, the next iteration will transition the system into a fully autonomous, closed-loop MLOps pipeline.
+
+* **Infrastructure as Code (IaC) & Continuous Deployment (CD):** Transitioning from local Docker Compose orchestration to automated cloud provisioning on **AWS EC2** utilizing **Terraform**. The CI/CD pipeline will dynamically manage infrastructure state and deploy immutable container updates with zero downtime.
+* **Data Drift Observability:** Implementing multivariate statistical hypothesis testing (e.g., Population Stability Index - PSI) on the incoming video streams to continuously monitor for covariate shift (e.g., changes in environmental lighting, seasonal weather, or new camera angles).
+* **Event-Driven Alerting:** Integrating a **Telegram REST API Webhook** to dispatch real-time diagnostic notifications to on-call engineers when critical PPE violations accumulate or when severe model degradation is detected.
+* **Continuous Training (CT):** Establishing an automated feedback loop where verified data drift autonomously triggers a retraining workflow via GitHub Webhooks. The pipeline will retrain on the newly acquired edge-cases, update the MLflow Model Registry, and seamlessly promote the adapted weights to production without human intervention.
+
 ---
 
-## 5. License
+## 6. Related Work & Portfolio
+
+While this repository focuses on real-time Computer Vision and Edge-AI inference, the foundational Infrastructure as Code (IaC) and fully automated GitOps pipelines (Terraform, AWS EC2, Closed-Loop CT) planned for the Future Roadmap have already been somewhat conceptualized and deployed in my parallel project.
+
+To explore my comprehensive approach to Cloud-Native MLOps and Data Drift Observability, please refer to:
+* **[Cali Housing MLOps: From Manual to GitOps Architecture](https://github.com/nhatminh-115/cali-housing-mlops)**
+
+---
+
+## 7. License
 MIT License - See `LICENSE` for details.
+
+
