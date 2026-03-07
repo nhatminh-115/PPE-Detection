@@ -11,7 +11,9 @@ from datetime import date, datetime
 from collections import defaultdict
 from supabase import create_client, Client
 from groq import Groq
+from datetime import datetime, timezone, timedelta
 
+ICT = timezone(timedelta(hours=7))
 
 # ---------------------------------------------------------------------------
 # Clients
@@ -59,7 +61,7 @@ def aggregate(rows: list[dict]) -> dict:
     confidence_n     = 0
 
     for row in rows:
-        hour = datetime.fromisoformat(row["created_at"]).hour
+        hour = datetime.fromisoformat(row["created_at"]).astimezone(ICT).hour
         hourly_counts[hour] += 1
 
         for v in row.get("violations", []):
