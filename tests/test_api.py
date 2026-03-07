@@ -4,12 +4,19 @@ import pytest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
-sys.modules["torch"]                     = MagicMock()
-sys.modules["torch.nn"]                  = MagicMock()
-sys.modules["ultralytics"]               = MagicMock()
-sys.modules["timm"]                      = MagicMock()
-sys.modules["cv2"]                       = MagicMock()
-sys.modules["ensemble_boxes"]            = MagicMock()
+sys.modules["torch"]                 = MagicMock()
+sys.modules["torch.nn"]              = MagicMock()
+sys.modules["torch.nn.functional"]   = MagicMock()
+sys.modules["torchvision"]           = MagicMock()
+sys.modules["torchvision.transforms"]= MagicMock()
+sys.modules["torchmetrics"]          = MagicMock()
+sys.modules["ultralytics"]           = MagicMock()
+sys.modules["timm"]                  = MagicMock()
+sys.modules["cv2"]                   = MagicMock()
+sys.modules["ensemble_boxes"]        = MagicMock()
+sys.modules["supervision"]           = MagicMock()
+sys.modules["lap"]                   = MagicMock()
+sys.modules["sahi"]                  = MagicMock()
 
 mock_supabase = MagicMock()
 mock_supabase.table.return_value.select.return_value \
