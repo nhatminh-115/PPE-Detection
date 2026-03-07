@@ -132,10 +132,10 @@ Hourly breakdown: {json.dumps(summary['hourly_breakdown'])}
 
 def save_to_supabase(client: Client, report_date: date, summary: dict, narrative: str) -> None:
     client.table("daily_reports").upsert({
-        "report_date": str(report_date),
-        "summary":     summary,
-        "narrative":   narrative,
-    }).execute()
+    "report_date": str(report_date),
+    "summary":     summary,
+    "narrative":   narrative,
+    }, on_conflict="report_date").execute()
 
 
 def send_telegram(summary: dict, narrative: str, report_date: date) -> None:
