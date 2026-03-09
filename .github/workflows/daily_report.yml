@@ -18,9 +18,13 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install Python Dependencies
         run: |
-          pip install supabase groq requests
+          pip install --upgrade pip
+          pip install fastapi httpx pytest supabase mlflow \
+                      jinja2 numpy pandas Pillow python-dotenv \
+                      python-multipart requests uvicorn groq \
+                      chromadb sentence-transformers pdfplumber
 
       - name: Run report service
         env:
