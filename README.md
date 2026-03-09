@@ -80,6 +80,15 @@ To ground report recommendations in actual Vietnamese labor law, the pipeline im
 | Notification | Telegram Bot API |
 | Storage | Supabase `daily_reports` table |
 
+**Daily Report database (Supabase):**  
+<img width="2106" height="434" alt="image" src="https://github.com/user-attachments/assets/db390a4c-c0ea-4488-9f66-b090b3c98449" />
+
+
+**Telegram Report:**  
+<img width="2386" height="1538" alt="image" src="https://github.com/user-attachments/assets/5605745f-01d0-4ceb-b490-9bc95b67fbe9" />
+
+
+
 ---
 
 ## 4. Model Performance
@@ -200,6 +209,7 @@ To explore my comprehensive approach to Cloud-Native MLOps and Data Drift Observ
 * **[Cali Housing MLOps: From Manual to GitOps Architecture](https://github.com/nhatminh-115/cali-housing-mlops)**
 
 ---
+
 
 
 
