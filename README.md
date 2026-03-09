@@ -55,7 +55,34 @@ The infrastructure follows GitOps principles, ensuring the inference environment
 
 ---
 
-## 3. Model Performance
+## 3. Automated Reporting & Compliance Intelligence
+
+### LLM Daily Report Service
+
+An automated reporting pipeline runs daily at 23:00 ICT via GitHub Actions, pulling violation logs from Supabase, generating a narrative safety report via Groq (Llama 3.3 70B), and dispatching to Telegram.
+
+**RAG-Augmented Regulation Context**
+
+To ground report recommendations in actual Vietnamese labor law, the pipeline implements a Retrieval-Augmented Generation (RAG) layer:
+
+* **Knowledge Base:** Thong tu 25/2022/TT-BLDTBXH — Ministry of Labor regulations on mandatory PPE by occupation (229 pages, 428 indexed chunks).
+* **Embedding:** `paraphrase-multilingual-MiniLM-L12-v2` via ChromaDB with cosine similarity indexing.
+* **Pipeline:** Violation types detected → auto-generated Vietnamese queries → top-k chunk retrieval → injected into Groq prompt as grounded context.
+
+**Result:** Daily reports cite specific regulation articles and Phu luc I entries rather than generic safety advice.
+
+| Component | Technology |
+|---|---|
+| LLM | Groq API (Llama 3.3 70B) |
+| Vector Store | ChromaDB (persistent, cosine) |
+| Embedding Model | sentence-transformers MiniLM-L12 |
+| Scheduler | GitHub Actions cron (16:00 UTC) |
+| Notification | Telegram Bot API |
+| Storage | Supabase `daily_reports` table |
+
+---
+
+## 4. Model Performance
 
 ### Stage 1: Detection Ensemble (VisDrone val set, 548 images)
 
@@ -106,7 +133,7 @@ https://github.com/user-attachments/assets/7d18e0cb-dba9-4d97-8319-41e1005efcc8
 
 ---
 
-## 4. Deployment Guide
+## 5. Deployment Guide
 
 ### Prerequisites
 * Docker Engine 24.0+ & Docker Compose
@@ -154,7 +181,7 @@ For enterprise clients preferring immutable deployments without building from so
 *(View the official repository on [Docker Hub](https://hub.docker.com/r/nhatminh115/ppe_system))*
 
 ---
-## 5. Future Roadmap: Closed-Loop MLOps
+## 6. Future Roadmap: Closed-Loop MLOps
 
 While the current architecture successfully decouples inference from state management, the next iteration will transition the system into a fully autonomous, closed-loop MLOps pipeline.
 
@@ -165,7 +192,7 @@ While the current architecture successfully decouples inference from state manag
 
 ---
 
-## 6. Related Work & Portfolio
+## 7. Related Work & Portfolio
 
 While this repository focuses on real-time Computer Vision and Edge-AI inference, the foundational Infrastructure as Code (IaC) and fully automated GitOps pipelines (Terraform, AWS EC2, Closed-Loop CT) planned for the Future Roadmap have already been somewhat conceptualized and deployed in my parallel project.
 
@@ -174,8 +201,7 @@ To explore my comprehensive approach to Cloud-Native MLOps and Data Drift Observ
 
 ---
 
-## 7. License
-MIT License - See `LICENSE` for details.
+
 
 
 
