@@ -114,6 +114,21 @@ To ground report recommendations in actual Vietnamese labor law, the pipeline im
 
 > Benchmarked on NVIDIA RTX 5070 Laptop GPU, PyTorch 2.10, CUDA 12.8
 
+### LLM Report Quality
+
+The daily report narrative is evaluated across 10 synthetic violation scenarios
+covering edge cases (night shift, repeat offenders, low confidence detections,
+mass violations). Evaluation performed via LLM-as-judge (Gemini 3.1 Pro).
+
+| Criterion | Score |
+|---|---|
+| Factual Accuracy | 5.0 / 5 |
+| Regulation Citation | 5.0 / 5 |
+| Specificity | 5.0 / 5 |
+| Actionability | 3.9 / 5 |
+| Conciseness | 5.0 / 5 |
+| **Overall** | **4.8 / 5** |
+
 **EfficientNet Training Metrics**
 
 ![PPE Vision Architecture](docs/EfficientNet_metrics.png)
@@ -208,6 +223,7 @@ To explore my comprehensive approach to Cloud-Native MLOps and Data Drift Observ
 * **[Cali Housing MLOps: From Manual to GitOps Architecture](https://github.com/nhatminh-115/cali-housing-mlops)**
 
 ---
+
 
 
 
