@@ -6,7 +6,9 @@ on:
     paths-ignore:
       - 'README.md'
       - 'docs/**'
+      - 'data/**'
       - '.gitignore'
+      - '.github/workflows/**'
   pull_request:
     branches:
       - main
