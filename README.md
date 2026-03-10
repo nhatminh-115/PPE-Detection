@@ -14,7 +14,7 @@ PPE Vision is a real-time, cloud-native inference engine designed for autonomous
 
 The platform is designed around a microservices architecture, exposing a scalable FastAPI application that integrates natively with MLflow for dynamic artifact retrieval and Supabase for unstructured event logging.
 
-![PPE Vision Architecture](docs/PPE_Pipeline.png)
+![PPE Vision Architecture](docs/PPE_Pipeline_2.png)
 
 ### 1.1 Core AI Pipeline
 
@@ -81,11 +81,11 @@ To ground report recommendations in actual Vietnamese labor law, the pipeline im
 | Storage | Supabase `daily_reports` table |
 
 **Daily Report database (Supabase):**  
-<img width="2106" height="434" alt="image" src="https://github.com/user-attachments/assets/db390a4c-c0ea-4488-9f66-b090b3c98449" />
+![PPE Vision Architecture](docs/Daily_report_supabase.png)
 
 
 **Telegram Report:**  
-<img width="2386" height="1538" alt="image" src="https://github.com/user-attachments/assets/5605745f-01d0-4ceb-b490-9bc95b67fbe9" />
+![PPE Vision Architecture](docs/Telegram_report.png)
 
 
 
@@ -196,7 +196,6 @@ While the current architecture successfully decouples inference from state manag
 
 * **Infrastructure as Code (IaC) & Continuous Deployment (CD):** Transitioning from local Docker Compose orchestration to automated cloud provisioning on **AWS EC2** utilizing **Terraform**. The CI/CD pipeline will dynamically manage infrastructure state and deploy immutable container updates with zero downtime.
 * **Data Drift Observability:** Implementing multivariate statistical hypothesis testing (e.g., Population Stability Index - PSI) on the incoming video streams to continuously monitor for covariate shift (e.g., changes in environmental lighting, seasonal weather, or new camera angles).
-* **Event-Driven Alerting:** Integrating a **Telegram REST API Webhook** to dispatch real-time diagnostic notifications to on-call engineers when critical PPE violations accumulate or when severe model degradation is detected.
 * **Continuous Training (CT):** Establishing an automated feedback loop where verified data drift autonomously triggers a retraining workflow via GitHub Webhooks. The pipeline will retrain on the newly acquired edge-cases, update the MLflow Model Registry, and seamlessly promote the adapted weights to production without human intervention.
 
 ---
@@ -209,6 +208,7 @@ To explore my comprehensive approach to Cloud-Native MLOps and Data Drift Observ
 * **[Cali Housing MLOps: From Manual to GitOps Architecture](https://github.com/nhatminh-115/cali-housing-mlops)**
 
 ---
+
 
 
 
