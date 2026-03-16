@@ -27,6 +27,7 @@ To mitigate domain shift between varying camera angles (aerial vs. close-circuit
 **Stage 2: Classification**
 Person tensors are classified using an **EfficientNetV2-B0** multi-label network. To ensure interpretability and suppress False Positives (e.g., misclassifying gray fabric as hardhats), we implemented a **Forward-CAM (Class Activation Map)** intercepting the `timm` feature extraction layer.
 
+**HuggingFace Spaces demo:** [![HuggingFace Spaces](https://img.shields.io/badge/🤗-Live%20Demo-yellow)](https://huggingface.co/spaces/Nhatminh1234/ppe-classifier)
 
 ![Forward-CAM Demo](docs/forward_cam_demo.gif)
 > **Left:** Without CAM — gray hardhat misclassified (WARN).   
