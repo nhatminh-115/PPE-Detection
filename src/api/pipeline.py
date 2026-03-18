@@ -36,11 +36,17 @@ def generate_frames():
         if cap is None or stream_state.trigger_restart:
             if cap is not None:
                 cap.release()
-            if not stream_state.source:
+            if stream_state.source is None:
                 time.sleep(1)
                 continue
             logger.info(f"Establishing stream: {stream_state.source}")
-            cap = cv2.VideoCapture(stream_state.source)
+            source = stream_state.source
+            if isinstance(source, str) and source.isdigit():
+                cap = cv2.VideoCapture(int(source), cv2.CAP_DSHOW)
+                time.sleep(0.5)  
+            else:
+                cap = cv2.VideoCapture(source)
+
             stream_state.trigger_restart = False
             if not cap.isOpened():
                 logger.error("Failed to acquire video stream.")

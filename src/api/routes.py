@@ -36,6 +36,20 @@ async def upload_video(video_file: UploadFile = File(...)):
         return {"status": "error", "message": str(e)}
 
 
+@app.post("/start_webcam")
+def start_webcam(camera_index: int = 0):
+    stream_state.source = str(camera_index)
+    stream_state.trigger_restart = True
+    return {"status": "success", "message": f"Webcam {camera_index} started"}
+
+
+@app.post("/stop_webcam")
+def stop_webcam():
+    stream_state.source = None
+    stream_state.trigger_restart = True
+    return {"status": "success", "message": "Webcam stream stopped"}
+
+
 @app.get("/api/violations")
 def get_violations():
     client = get_supabase_client()

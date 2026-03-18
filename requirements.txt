@@ -27,3 +27,7 @@ groq
 chromadb 
 sentence-transformers 
 pdfplumber
+onnx 
+onnxruntime 
+onnxruntime-extensions
+onnxscript

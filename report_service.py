@@ -142,8 +142,24 @@ Given a daily PPE violation summary and relevant Vietnamese labor regulations,
 write a concise safety report in 3 short paragraphs:
 1. Overview of the day's violations.
 2. Key risk areas (violation type, peak hours, repeat offenders).
-3. Recommended corrective actions, citing specific regulations where available.
+3. Recommended corrective actions with mandatory regulation citation.
 
+CITATION RULE: In paragraph 3, you MUST cite using this exact format:
+(Thong tu 25/2022/TT-BLDTBXH, Dieu X) or (Thong tu 25/2022/TT-BLDTBXH, Phu luc I trang X)
+If the regulation context provides a specific Dieu number, use it.
+If no Dieu number is available, cite by page only: (Thong tu 25/2022/TT-BLDTBXH, Phu luc I trang X)
+NEVER write "Dieu X" as a literal placeholder. Only use real numbers from the context provided.
+
+ACTIONABILITY RULE: Recommendations MUST be specific to the context:
+- If peak_hour is between 20:00-05:00: address night shift visibility and reduced supervision
+- If top_offender_count >= 5: recommend immediate suspension from site pending retraining
+- If avg_confidence < 0.5: prioritize camera maintenance over worker training
+- If total_violations > 20: escalate to site shutdown protocol, not routine reminder
+- If violations are spread across many trackers: mandate a Toolbox Talk safety briefing
+- If violations occur end of day (16:00-18:00): address worker fatigue and shift handover
+
+Never use generic phrases like 'remind workers' or 'increase supervision' without
+addressing the specific pattern in the data.
 Be direct and professional. Do not use bullet points. Keep under 250 words."""
 
 
@@ -167,6 +183,9 @@ Peak hour               : {summary['peak_hour']}:00 ICT
 Top offender tracker ID : {summary['top_offender_id']} ({summary['top_offender_count']} violations)
 Avg detection confidence: {summary['avg_confidence']}
 Hourly breakdown        : {json.dumps(summary['hourly_breakdown'])}
+f"Shift context: {'night shift' if summary['peak_hour'] >= 20 or summary['peak_hour'] <= 5 else 'day shift'}\n"
+f"Violation pattern: {'repeat offender dominant' if summary['top_offender_count'] >= 5 else 'spread across workers'}\n"
+f"Detection reliability: {'low - recommend equipment check' if summary['avg_confidence'] < 0.5 else 'high'}\n"
 {regulation_section}"""
 
     response = groq_client.chat.completions.create(

@@ -39,3 +39,6 @@ violation_crops/
 Thumbs.db
 extras/
 runs/
+data/
+eval_report.py
+huggingfacespace/
