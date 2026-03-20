@@ -125,6 +125,7 @@
             flex: 1;
             overflow-y: auto;
             padding: 16px 12px;
+            min-height: 0;
         }
 
         .control-group { margin-bottom: 20px; }
@@ -402,6 +403,23 @@
 
         .toast.success { background: rgba(26,61,30,0.95); border-color: rgba(63,185,80,0.4); color: #3fb950; }
         .toast.error   { background: rgba(61,26,26,0.95);  border-color: rgba(248,81,73,0.4);  color: #f85149; }
+        .toast.violation {
+            background: rgba(61,26,26,0.97);
+            border-color: rgba(248,81,73,0.5);
+            color: #f85149;
+            max-width: 320px;
+        }
+        .toast.violation .vio-title {
+            font-weight: 600;
+            font-size: 12px;
+            margin-bottom: 3px;
+        }
+        .toast.violation .vio-detail {
+            font-size: 11px;
+            color: #c9a0a0;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
 
         /* Lightbox */
         .lightbox {
@@ -527,6 +545,80 @@
         .lightbox-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 
         .violation-card { cursor: pointer; }
+        .dual-slider {
+            position: relative;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--surface-3);
+            margin: 4px 0;
+        }
+
+        .dual-slider-fill {
+            position: absolute;
+            height: 100%;
+            width: 100%;
+            border-radius: 3px;
+            pointer-events: none;
+        }
+
+        .dual-range {
+            position: absolute;
+            width: 100%;
+            height: 6px;
+            background: transparent;
+            -webkit-appearance: none;
+            pointer-events: none;
+            top: 0;
+            left: 0;
+            margin: 0;
+        }
+
+        .dual-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid var(--surface);
+            pointer-events: all;
+            cursor: pointer;
+            position: relative;
+            z-index: 2;
+        }
+
+        .range-warn::-webkit-slider-thumb {
+            background: #f85149;
+            box-shadow: 0 0 0 2px rgba(248,81,73,0.3);
+        }
+
+        .range-ok::-webkit-slider-thumb {
+            background: #3fb950;
+            box-shadow: 0 0 0 2px rgba(63,185,80,0.3);
+        }
+
+        .dual-range::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid var(--surface);
+            pointer-events: all;
+            cursor: pointer;
+        }
+
+        .range-warn::-moz-range-thumb { background: #f85149; }
+        .range-ok::-moz-range-thumb   { background: #3fb950; }
+
+
+        .stat-card { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:16px; text-align:center; }
+        .stat-value { font-family:'JetBrains Mono',monospace; font-size:36px; font-weight:700; color:var(--text-primary); line-height:1; margin-bottom:8px; }
+        .stat-label { font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em; margin-top:4px; }
+        .dash-panel { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:14px; }
+        .dash-panel-title { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); margin-bottom:8px; }
+        .offender-row { display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border); }
+        .offender-row:last-child { border-bottom:none; }
+        .offender-id { font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--text-primary); font-weight:500; }
+        .offender-bar-wrap { flex:1; margin:0 10px; height:4px; background:var(--surface-3); border-radius:2px; }
+        .offender-bar { height:100%; background:var(--danger); border-radius:2px; }
+        .offender-count { font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--text-secondary); font-weight:600; }
     </style>
 </head>
 <body>
@@ -554,6 +646,14 @@
                 </svg>
                 Violation Logs
             </button>
+            <button onclick="switchTab('dashboard-tab')" id="nav-dashboard" class="nav-item">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="1" y="8" width="4" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/>
+                    <rect x="6" y="5" width="4" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/>
+                    <rect x="11" y="2" width="4" height="12" rx="1" stroke="currentColor" stroke-width="1.3"/>
+                </svg>
+                Analytics
+            </button>
         </div>
 
         <div class="sidebar-content">
@@ -575,6 +675,10 @@
                     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="7" r="2.5" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="4" width="14" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 13v1.5M11 13v1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
                     Use Webcam
                 </button>
+                <button id="btn-cam" onclick="toggleCamMode()" class="file-upload-btn" style="margin-top:8px;">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    CAM Overlay
+                </button>
                 <div id="file-name" style="font-size:10px;color:var(--text-muted);margin-top:6px;font-family:'JetBrains Mono',monospace;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">No file selected</div>
             </div>
 
@@ -589,6 +693,54 @@
                 </div>
             </div>
         </div>
+
+            <div class="control-group">
+                <span class="control-label">Detection Thresholds</span>
+
+                <!-- Hardhat -->
+                <div style="margin-bottom:14px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                        <span style="font-size:11px;color:var(--text-secondary);">Hardhat</span>
+                        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted);">
+                            warn <span id="hardhat-warn-val" style="color:#f59e0b;">0.40</span>
+                            &nbsp;ok <span id="hardhat-ok-val" style="color:var(--success);">0.70</span>
+                        </span>
+                    </div>
+                    <div class="dual-slider" id="hardhat-track">
+                        <div class="dual-slider-fill" id="hardhat-fill"></div>
+                        <input type="range" class="dual-range range-warn" id="hardhat-warn" min="0.05" max="0.90" step="0.05" value="0.40"
+                            oninput="onDualSlider('hardhat')" onchange="applyThresholds()">
+                        <input type="range" class="dual-range range-ok" id="hardhat-ok" min="0.05" max="0.90" step="0.05" value="0.70"
+                            oninput="onDualSlider('hardhat')" onchange="applyThresholds()">
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-top:3px;">
+                        <span style="font-size:9px;color:var(--text-muted);">0.05</span>
+                        <span style="font-size:9px;color:var(--text-muted);">0.90</span>
+                    </div>
+                </div>
+
+                <!-- Vest -->
+                <div>
+                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                        <span style="font-size:11px;color:var(--text-secondary);">Vest</span>
+                        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted);">
+                            warn <span id="vest-warn-val" style="color:#f59e0b;">0.20</span>
+                            &nbsp;ok <span id="vest-ok-val" style="color:var(--success);">0.50</span>
+                        </span>
+                    </div>
+                    <div class="dual-slider" id="vest-track">
+                        <div class="dual-slider-fill" id="vest-fill"></div>
+                        <input type="range" class="dual-range range-warn" id="vest-warn" min="0.05" max="0.90" step="0.05" value="0.20"
+                            oninput="onDualSlider('vest')" onchange="applyThresholds()">
+                        <input type="range" class="dual-range range-ok" id="vest-ok" min="0.05" max="0.90" step="0.05" value="0.50"
+                            oninput="onDualSlider('vest')" onchange="applyThresholds()">
+                    </div>
+                    <div style="display:flex;justify-content:space-between;margin-top:3px;">
+                        <span style="font-size:9px;color:var(--text-muted);">0.05</span>
+                        <span style="font-size:9px;color:var(--text-muted);">0.90</span>
+                    </div>
+                </div>
+            </div>
 
         <div class="sidebar-footer">
             <button id="btn-stream" class="btn-primary" onclick="toggleStream()">
@@ -643,6 +795,93 @@
                 </div>
             </div>
         </div>
+        <div id="dashboard-tab" class="tab-panel hidden" style="overflow-y:auto;">
+            <!-- Session filter -->
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);white-space:nowrap;">Session</span>
+                <select id="session-select" onchange="fetchStats()"
+                    style="flex:1;padding:7px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-size:12px;font-family:'JetBrains Mono',monospace;cursor:pointer;">
+                    <option value="">All Sessions</option>
+                </select>
+                <button onclick="fetchStats()" class="btn-secondary" style="flex-shrink:0;">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M8 1v4l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Refresh
+                </button>
+            </div>
+            <!-- Stat cards row -->
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-total">—</div>
+                    <div class="stat-label">Total Events</div>
+                </div>
+                <div class="stat-card" style="border-color:rgba(248,81,73,0.3);">
+                    <div class="stat-value" id="stat-hardhat" style="color:#f85149;">—</div>
+                    <div class="stat-label">Missing Hardhat</div>
+                </div>
+                <div class="stat-card" style="border-color:rgba(245,158,11,0.3);">
+                    <div class="stat-value" id="stat-vest" style="color:#f59e0b;">—</div>
+                    <div class="stat-label">Missing Vest</div>
+                </div>
+                <div class="stat-card" style="border-color:rgba(63,185,80,0.3);">
+                    <div class="stat-value" id="stat-peak" style="color:#3fb950;">—</div>
+                    <div class="stat-label">Peak Hour (ICT)</div>
+                </div>
+                <div class="stat-card" style="border-color:rgba(56,139,253,0.3);">
+                    <div class="stat-value" id="stat-top-id" style="color:var(--accent);">—</div>
+                    <div class="stat-label">Top Offender ID</div>
+                </div>
+            </div>
+
+            <!-- Charts row -->
+            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;">
+                <!-- Hourly bar chart -->
+                <div class="dash-panel">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div class="dash-panel-title">Violations by Hour (ICT)</div>
+                        <span id="peak-label" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#f59e0b;"></span>
+                    </div>
+                    <div id="hourly-chart" style="display:flex;align-items:flex-end;gap:3px;height:140px;padding:8px 0;"></div>
+                    <div style="display:flex;justify-content:space-between;margin-top:2px;">
+                        <span style="font-size:10px;color:var(--text-muted);">00:00</span>
+                        <span style="font-size:10px;color:var(--text-muted);">12:00</span>
+                        <span style="font-size:10px;color:var(--text-muted);">23:00</span>
+                    </div>
+                </div>
+
+                <!-- Donut chart -->
+                <div class="dash-panel" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                    <div class="dash-panel-title" style="align-self:flex-start;">Violation Type</div>
+                    <svg id="donut-svg" viewBox="0 0 120 120" width="120" height="120" style="margin:8px 0;">
+                        <circle id="donut-bg"      cx="60" cy="60" r="45" fill="none" stroke="var(--surface-3)" stroke-width="18"/>
+                        <circle id="donut-hardhat" cx="60" cy="60" r="45" fill="none" stroke="#f85149" stroke-width="18"
+                            stroke-dasharray="0 283" stroke-dashoffset="70.75" transform="rotate(-90 60 60)"/>
+                        <circle id="donut-vest"    cx="60" cy="60" r="45" fill="none" stroke="#f59e0b" stroke-width="18"
+                            stroke-dasharray="0 283" stroke-dashoffset="70.75" transform="rotate(-90 60 60)"/>
+                    </svg>
+                    <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+                        <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                            <span style="width:10px;height:10px;border-radius:50%;background:#f85149;flex-shrink:0;"></span>
+                            <span style="color:var(--text-secondary);">Hardhat</span>
+                            <span id="donut-hardhat-pct" style="margin-left:auto;font-family:'JetBrains Mono',monospace;color:#f85149;">—%</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
+                            <span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span>
+                            <span style="color:var(--text-secondary);">Vest</span>
+                            <span id="donut-vest-pct" style="margin-left:auto;font-family:'JetBrains Mono',monospace;color:#f59e0b;">—%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top offenders -->
+                <div class="dash-panel">
+                    <div class="dash-panel-title">Top Offenders</div>
+                    <div id="top-offenders" style="margin-top:8px;"></div>
+                </div>
+            </div>
+        </div>
     </main>
 
     <div id="toast-container"></div>
@@ -675,6 +914,60 @@
 
     <script>
         let isStreaming = false;
+
+        function onDualSlider(type) {
+            const warnEl = document.getElementById(type + '-warn');
+            const okEl   = document.getElementById(type + '-ok');
+            let warn = parseFloat(warnEl.value);
+            let ok   = parseFloat(okEl.value);
+
+            // Enforce warn < ok
+            if (warn >= ok) {
+                if (document.activeElement === warnEl) {
+                    warn = ok - 0.05;
+                    warnEl.value = warn;
+                } else {
+                    ok = warn + 0.05;
+                    okEl.value = ok;
+                }
+            }
+
+            document.getElementById(type + '-warn-val').textContent = warn.toFixed(2);
+            document.getElementById(type + '-ok-val').textContent   = ok.toFixed(2);
+
+            // Update gradient fill
+            const min   = 0.05, max = 0.90;
+            const warnP = ((warn - min) / (max - min)) * 100;
+            const okP   = ((ok   - min) / (max - min)) * 100;
+            document.getElementById(type + '-fill').style.background =
+                `linear-gradient(to right,
+                    #f85149 0%, #f85149 ${warnP}%,
+                    #f59e0b ${warnP}%, #f59e0b ${okP}%,
+                    #3fb950 ${okP}%, #3fb950 100%)`;
+        }
+
+        async function applyThresholds() {
+            const hardhat_ok   = document.getElementById('hardhat-ok').value;
+            const hardhat_warn = document.getElementById('hardhat-warn').value;
+            const vest_ok      = document.getElementById('vest-ok').value;
+            const vest_warn    = document.getElementById('vest-warn').value;
+            try {
+                const response = await fetch(
+                    `/api/thresholds?hardhat_ok=${hardhat_ok}&hardhat_warn=${hardhat_warn}&vest_ok=${vest_ok}&vest_warn=${vest_warn}`,
+                    { method: 'POST' }
+                );
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showToast(`Thresholds — Hardhat: warn ${parseFloat(hardhat_warn).toFixed(2)} ok ${parseFloat(hardhat_ok).toFixed(2)} | Vest: warn ${parseFloat(vest_warn).toFixed(2)} ok ${parseFloat(vest_ok).toFixed(2)}`, 'success');
+                }
+            } catch { showToast('Failed to update thresholds', 'error'); }
+        }
+
+        // Init fill on load
+        window.addEventListener('DOMContentLoaded', () => {
+            onDualSlider('hardhat');
+            onDualSlider('vest');
+        });
         let isWebcam = false;
 
         async function toggleWebcam() {
@@ -707,23 +1000,118 @@
         }
 
         function switchTab(tabId) {
-            const isLive = tabId === 'live-tab';
-            document.getElementById('live-tab').classList.toggle('hidden', !isLive);
-            document.getElementById('log-tab').classList.toggle('hidden', isLive);
-            document.getElementById('nav-live').className = 'nav-item' + (isLive ? ' active' : '');
-            document.getElementById('nav-log').className  = 'nav-item' + (!isLive ? ' active' : '');
+            ['live-tab','log-tab','dashboard-tab'].forEach(t => document.getElementById(t).classList.add('hidden'));
+            ['nav-live','nav-log','nav-dashboard'].forEach(n => document.getElementById(n).className = 'nav-item');
+            document.getElementById(tabId).classList.remove('hidden');
+            const navMap = {'live-tab':'nav-live','log-tab':'nav-log','dashboard-tab':'nav-dashboard'};
+            document.getElementById(navMap[tabId]).className = 'nav-item active';
 
             const logActions = document.getElementById('log-actions');
-            if (isLive) {
+            if (tabId === 'live-tab') {
                 logActions.style.display = 'none';
-                document.getElementById('topbar-title-text').textContent = 'Live Inference \u2014 Zone A';
+                document.getElementById('topbar-title-text').textContent = 'Live Inference — Zone A';
                 document.getElementById('topbar-sub-text').textContent = 'Monitor active';
-            } else {
+            } else if (tabId === 'log-tab') {
                 logActions.style.display = 'flex';
                 document.getElementById('topbar-title-text').textContent = 'Violation Registry';
                 document.getElementById('topbar-sub-text').textContent = 'Supabase sync';
                 fetchViolations();
+            } else {
+                logActions.style.display = 'none';
+                document.getElementById('topbar-title-text').textContent = 'Analytics Dashboard';
+                document.getElementById('topbar-sub-text').textContent = 'Last 200 records';
+                fetchStats();
             }
+        }
+
+        async function fetchStats() {
+            try {
+                // Load sessions into dropdown if empty
+                const sessionSelect = document.getElementById('session-select');
+                if (sessionSelect.options.length <= 1) {
+                    const sRes  = await fetch('/api/sessions');
+                    const sData = await sRes.json();
+                    (sData.sessions || []).forEach(s => {
+                        const opt   = document.createElement('option');
+                        opt.value   = s.id;
+                        const dt    = new Date(s.created_at).toLocaleString([], {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+                        opt.textContent = `${s.id} (${dt})`;
+                        sessionSelect.appendChild(opt);
+                    });
+                }
+
+                const sessionId = sessionSelect.value;
+                const url = sessionId ? `/api/stats?session_id=${sessionId}` : '/api/stats';
+                const res  = await fetch(url);
+                const data = await res.json();
+
+                const total   = data.total        || 0;
+                const hardhat = data.none_hardhat || 0;
+                const vest    = data.none_vest    || 0;
+
+                document.getElementById('stat-total').textContent   = total;
+                document.getElementById('stat-hardhat').textContent = hardhat;
+                document.getElementById('stat-vest').textContent    = vest;
+
+                // Peak hour
+                const hourly = data.hourly || {};
+                const peakH  = Object.keys(hourly).reduce((a,b) => hourly[a]>hourly[b]?a:b, Object.keys(hourly)[0]);
+                if (peakH !== undefined) {
+                    document.getElementById('stat-peak').textContent  = String(peakH).padStart(2,'0') + ':00';
+                    document.getElementById('peak-label').textContent = `Peak: ${String(peakH).padStart(2,'0')}:00`;
+                }
+
+                // Top offender ID
+                if (data.top_offenders?.length) {
+                    document.getElementById('stat-top-id').textContent = 'ID ' + data.top_offenders[0].id;
+                }
+
+                // Hourly bar chart
+                const chart  = document.getElementById('hourly-chart');
+                chart.innerHTML = '';
+                const maxVal = Math.max(...Array.from({length:24}, (_,h) => hourly[h] || 0), 1);
+                for (let h = 0; h < 24; h++) {
+                    const val    = hourly[h] || 0;
+                    const pct    = (val / maxVal) * 100;
+                    const isPeak = String(h) === String(peakH);
+                    const color  = isPeak ? '#f59e0b' : (val > 0 ? 'var(--danger)' : 'var(--surface-3)');
+                    const bar    = document.createElement('div');
+                    bar.title    = `${String(h).padStart(2,'0')}:00 — ${val} violations`;
+                    bar.style.cssText = `flex:1;height:${Math.max(pct,2)}%;background:${color};border-radius:2px 2px 0 0;opacity:${val>0?0.75:0.3};cursor:default;transition:opacity 0.15s;`;
+                    bar.addEventListener('mouseenter', () => bar.style.opacity='1');
+                    bar.addEventListener('mouseleave', () => bar.style.opacity = val>0?'0.75':'0.3');
+                    chart.appendChild(bar);
+                }
+
+                // Donut chart
+                const totalViol = hardhat + vest || 1;
+                const hPct = hardhat / totalViol;
+                const vPct = vest    / totalViol;
+                const circ = 2 * Math.PI * 45;
+                const hLen = hPct * circ;
+                const vLen = vPct * circ;
+                document.getElementById('donut-hardhat').setAttribute('stroke-dasharray', `${hLen} ${circ - hLen}`);
+                document.getElementById('donut-hardhat').setAttribute('stroke-dashoffset', '0');
+                document.getElementById('donut-vest').setAttribute('stroke-dasharray',    `${vLen} ${circ - vLen}`);
+                document.getElementById('donut-vest').setAttribute('stroke-dashoffset',   String(-hLen));
+                document.getElementById('donut-hardhat-pct').textContent = Math.round(hPct*100) + '%';
+                document.getElementById('donut-vest-pct').textContent    = Math.round(vPct*100) + '%';
+
+                // Top offenders
+                const offEl    = document.getElementById('top-offenders');
+                offEl.innerHTML = '';
+                const maxCount = data.top_offenders?.[0]?.count || 1;
+                (data.top_offenders || []).forEach(o => {
+                    const pct = (o.count / maxCount) * 100;
+                    const row = document.createElement('div');
+                    row.className = 'offender-row';
+                    row.innerHTML = `
+                        <span class="offender-id">ID ${o.id}</span>
+                        <div class="offender-bar-wrap"><div class="offender-bar" style="width:${pct}%"></div></div>
+                        <span class="offender-count">${o.count}</span>`;
+                    offEl.appendChild(row);
+                });
+            } catch(e) { console.error('fetchStats error:', e); }
         }
 
         function toggleStream() {
@@ -744,6 +1132,7 @@
                 badge.textContent = 'LIVE';
                 badge.className   = 'status-badge live';
                 dot.classList.add('live');
+                startPolling();
             } else {
                 videoEl.src = '';
                 videoEl.classList.add('hidden');
@@ -753,6 +1142,7 @@
                 badge.textContent = 'OFFLINE';
                 badge.className   = 'status-badge';
                 dot.classList.remove('live');
+                stopPolling();
             }
         }
 
@@ -926,6 +1316,88 @@
                 toast.style.opacity = '0';
                 setTimeout(function() { toast.remove(); }, 300);
             }, 3500);
+        }
+
+        let isCamMode = false;
+
+        async function toggleCamMode() {
+            const btn = document.getElementById('btn-cam');
+            isCamMode = !isCamMode;
+            try {
+                await fetch(`/api/cam_mode?enabled=${isCamMode}`, { method: 'POST' });
+                if (isCamMode) {
+                    btn.style.borderColor = '#f59e0b';
+                    btn.style.color       = '#f59e0b';
+                    btn.style.background  = 'rgba(245,158,11,0.1)';
+                    showToast('CAM Overlay ON', 'success');
+                } else {
+                    btn.style.borderColor = '';
+                    btn.style.color       = '';
+                    btn.style.background  = '';
+                    showToast('CAM Overlay OFF', 'success');
+                }
+            } catch { showToast('Failed to toggle CAM mode', 'error'); }
+        }
+
+        function showViolationToast(violation) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast violation';
+
+            const v     = violation.violations?.[0] || {};
+            const types = (violation.violations || [])
+                .map(x => x.violation_type.replace('none_', '').toUpperCase())
+                .join(', ');
+            const time  = new Date(violation.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+            const sid   = violation.session_id ? ` [${violation.session_id}]` : '';
+
+            toast.innerHTML = `
+                <div class="vio-title">🚨 PPE Violation${sid}</div>
+                <div class="vio-detail">ID ${v.tracker_id ?? '—'} &nbsp;|&nbsp; ${types}</div>
+                <div class="vio-detail">${time}</div>`;
+
+            container.appendChild(toast);
+            setTimeout(function() {
+                toast.style.opacity = '0';
+                setTimeout(function() { toast.remove(); }, 300);
+            }, 6000);
+        }
+
+        // Poll for new violations every 5s while streaming
+        let lastViolationId = null;
+        let pollInterval    = null;
+
+        function startPolling() {
+            if (pollInterval) return;
+            pollInterval = setInterval(async () => {
+                if (!isStreaming) return;
+                try {
+                    const res  = await fetch('/api/violations');
+                    const data = await res.json();
+                    const rows = data.data || [];
+                    if (!rows.length) return;
+
+                    const latest = rows[0];
+                    if (lastViolationId === null) {
+                        lastViolationId = latest.id;
+                        return;
+                    }
+                    if (latest.id !== lastViolationId) {
+                        // New violations since last poll
+                        const newRows = rows.filter(r => r.id !== lastViolationId);
+                        newRows.slice(0, 3).forEach(showViolationToast);
+                        lastViolationId = latest.id;
+                    }
+                } catch(e) {}
+            }, 5000);
+        }
+
+        function stopPolling() {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+            lastViolationId = null;
         }
     </script>
 </body>

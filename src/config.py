@@ -26,7 +26,7 @@ IMG_SIZE      = 224
 
 PPE_THRESHOLDS = {
     'hardhat': {'ok': 0.70, 'warn': 0.40}, 
-    'vest':    {'ok': 0.50, 'warn': 0.20}  
+    'vest':    {'ok': 0.50, 'warn': 0.15}  
 }
 
 STATE_COLORS = {

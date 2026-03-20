@@ -1,16 +1,26 @@
 import cv2
+import time
 from src.config import (
     LABEL_COLS, PPE_THRESHOLDS, HYSTERESIS_MARGIN,
     USE_EMA, EMA_ALPHA, ALERT_TIME_THRESHOLD,
     GRACE_PERIOD_SEC, STATE_COLORS, COLOR_TRACK,
 )
-from src.infrastructure.supabase import log_violation_to_supabase, db_executor, reported_ids
+from src.infrastructure.supabase import log_violation_to_supabase, db_executor
+
+# ---------------------------------------------------------------------------
+# Violation tracking — replaces reported_ids set
+# {tid: {"violations": set(), "last_reported": float}}
+# ---------------------------------------------------------------------------
+reported_violations: dict = {}
+
+VIOLATION_COOLDOWN_SEC = 300.0  # 5 minutes before re-reporting same tracker
 
 
 class StreamState:
     def __init__(self):
-        self.source = None
+        self.source          = None
         self.trigger_restart = False
+        self.session_id      = None
 
 
 def get_next_state(class_name: str, prob: float, current_state) -> int:
@@ -34,9 +44,39 @@ def get_next_state(class_name: str, prob: float, current_state) -> int:
         return 0
 
 
+def _should_report(tid, missing_items: list, current_time: float) -> list:
+    """
+    Returns list of violation types that should be logged.
+    - New items not yet reported in this cooldown window → log immediately
+    - Cooldown expired → reset and re-report all current violations
+    """
+    if tid not in reported_violations:
+        reported_violations[tid] = {
+            "violations":    set(),
+            "last_reported": 0.0,
+        }
+
+    rec = reported_violations[tid]
+
+    # Cooldown expired → reset, re-report everything
+    if current_time - rec["last_reported"] >= VIOLATION_COOLDOWN_SEC:
+        rec["violations"]    = set()
+        rec["last_reported"] = 0.0
+
+    # Find new violations not yet reported in this cooldown window
+    new_items = set(missing_items) - rec["violations"]
+
+    if new_items:
+        rec["violations"].update(new_items)
+        rec["last_reported"] = current_time
+
+    return list(new_items)
+
+
 def update_ema_and_decide(
     raw_results, tracker_ids, boxes, frame,
     ppe_ema, ppe_state, violation_timer, current_time,
+    session_id=None,
 ):
     """Processes temporal smoothing and orchestrates violation accumulation logic."""
     smoothed = []
@@ -73,19 +113,27 @@ def update_ema_and_decide(
         else:
             violation_timer[tid]["duration"] = 0.0
 
-        if violation_timer[tid]["duration"] >= ALERT_TIME_THRESHOLD and tid not in reported_ids:
-            reported_ids.add(tid)
+        if violation_timer[tid]["duration"] >= ALERT_TIME_THRESHOLD:
             missing_items = [LABEL_COLS[i] for i, s in enumerate(new_states) if s == 0]
             missing_probs = [avg_probs[i] for i, s in enumerate(new_states) if s == 0]
 
             if missing_items:
-                import numpy as np
-                img_h, img_w = frame.shape[:2]
-                x1, y1, x2, y2 = map(int, box)
-                x1, y1 = max(0, x1), max(0, y1)
-                x2, y2 = min(img_w, x2), min(img_h, y2)
-                crop = frame[y1:y2, x1:x2].copy()
-                db_executor.submit(log_violation_to_supabase, tid, missing_items, missing_probs, crop)
+                to_report = _should_report(tid, missing_items, current_time)
+                if to_report:
+                    report_probs = [
+                        avg_probs[LABEL_COLS.index(item)]
+                        for item in to_report
+                    ]
+                    import numpy as np
+                    img_h, img_w = frame.shape[:2]
+                    x1, y1, x2, y2 = map(int, box)
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(img_w, x2), min(img_h, y2)
+                    crop = frame[y1:y2, x1:x2].copy()
+                    db_executor.submit(
+                        log_violation_to_supabase,
+                        tid, to_report, report_probs, crop, session_id,
+                    )
 
         ppe_state[tid] = new_states
         smoothed.append({"probs": avg_probs, "states": new_states})
@@ -103,7 +151,7 @@ def garbage_collection(active_ids, current_time, last_seen_timer, *state_dicts):
         for d in state_dicts:
             if k in d:
                 del d[k]
-        reported_ids.discard(k)
+        reported_violations.pop(k, None)
         del last_seen_timer[k]
 
 
@@ -116,8 +164,8 @@ def draw_ppe_result(frame, box, ppe_result, tracker_id):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLOR_TRACK, 1)
         return
 
-    states    = ppe_result["states"]
-    min_state = min(states)
+    states     = ppe_result["states"]
+    min_state  = min(states)
     main_color = STATE_COLORS[min_state]
 
     label_parts = []

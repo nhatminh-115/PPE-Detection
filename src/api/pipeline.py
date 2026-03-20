@@ -29,8 +29,9 @@ def generate_frames():
     last_ppe_results = []
     ppe_ema, box_ema, ppe_state = {}, {}, {}
     violation_timer, last_seen_timer = {}, {}
-    frame_count = 0
-    cap = None
+    frame_count  = 0
+    cap          = None
+    last_cam_frame = None  # cached frame with CAM overlay
 
     while True:
         if cap is None or stream_state.trigger_restart:
@@ -43,7 +44,7 @@ def generate_frames():
             source = stream_state.source
             if isinstance(source, str) and source.isdigit():
                 cap = cv2.VideoCapture(int(source), cv2.CAP_DSHOW)
-                time.sleep(0.5)  
+                time.sleep(0.5)
             else:
                 cap = cv2.VideoCapture(source)
 
@@ -107,10 +108,19 @@ def generate_frames():
                     smoothed_boxes.append(box_ema[tid])
                 tracked.xyxy = np.array(smoothed_boxes)
 
-                raw_results = classify_ppe_batch(model_stage2, frame, tracked.xyxy, device)
+                frame_clean = frame.copy()  # clean copy before CAM overlay
+                raw_results = classify_ppe_batch(
+                    model_stage2, frame, tracked.xyxy, device,
+                    tracker_ids=tracked.tracker_id,  # stable EMA key
+                )
+                # Cache frame with CAM overlay for skip frames
+                from src.inference.classifier import cam_mode_enabled
+                if cam_mode_enabled:
+                    last_cam_frame = frame.copy()
                 ppe_results = update_ema_and_decide(
                     raw_results, tracked.tracker_id, tracked.xyxy,
-                    frame, ppe_ema, ppe_state, violation_timer, current_time,
+                    frame_clean, ppe_ema, ppe_state, violation_timer, current_time,
+                    stream_state.session_id,  # pass session_id, no circular import
                 )
                 garbage_collection(
                     tracked.tracker_id, current_time,
@@ -126,6 +136,15 @@ def generate_frames():
             last_tracked, last_ppe_results = tracked, ppe_results
         else:
             tracked, ppe_results = last_tracked, last_ppe_results
+            # Reuse cached CAM overlay for skip frames — fixes flicker
+            from src.inference.classifier import cam_mode_enabled
+            if cam_mode_enabled and last_cam_frame is not None and len(tracked) > 0:
+                for box in tracked.xyxy:
+                    x1, y1, x2, y2 = map(int, box)
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(frame.shape[1], x2), min(frame.shape[0], y2)
+                    if x2 > x1 and y2 > y1:
+                        frame[y1:y2, x1:x2] = last_cam_frame[y1:y2, x1:x2]
 
         from src.inference import draw_ppe_result
         annotated = frame.copy()
