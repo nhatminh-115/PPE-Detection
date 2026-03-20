@@ -88,8 +88,6 @@ To ground report recommendations in actual Vietnamese labor law, the pipeline im
 **Telegram Report:**  
 ![PPE Vision Architecture](docs/Telegram_report.png)
 
-
-
 ---
 
 ## 4. Model Performance
@@ -114,6 +112,18 @@ To ground report recommendations in actual Vietnamese labor law, the pipeline im
 | EfficientNetV2-B0 | 0.97 | 0.88 | 0.92 | 39.1 |
 
 > Benchmarked on NVIDIA RTX 5070 Laptop GPU, PyTorch 2.10, CUDA 12.8
+
+### ONNX Export & CPU Optimization
+
+EfficientNetV2-B0 exported to ONNX for cross-platform deployment.
+
+| Format | Latency | Throughput | Size |
+|---|---|---|---|
+| PyTorch (CPU) | ~45 ms | ~22 FPS | 22.4 MB |
+| ONNX FP32 (CPU) | 7.46 ms | 134 FPS | 22.4 MB |
+
+> ONNX Runtime graph optimization yields ~6x speedup on CPU inference.
+> Model artifact: [MLflow Run](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow)
 
 ### LLM Report Quality
 
