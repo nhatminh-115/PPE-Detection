@@ -22,6 +22,12 @@ def get_supabase_client():
                 supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
                 logger.info("Supabase connection successfully initialized.")
             except Exception as e:
+                if "unexpected keyword argument 'proxy'" in str(e):
+                    logger.error(
+                        "Failed to initialize Supabase due to dependency mismatch. "
+                        "Pin httpx to a compatible version (for example: httpx==0.27.2) "
+                        "and reinstall requirements."
+                    )
                 logger.error(f"Failed to initialize Supabase: {e}")
         else:
             logger.warning("Supabase credentials missing. Remote logging disabled.")

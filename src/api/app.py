@@ -38,9 +38,15 @@ model1 = YOLO(model1_path)
 model1.predict(
     torch.zeros((1, 3, 1280, 1280)).to(device),
     imgsz=1280,
+    device=device,
 )
 model2     = YOLO(model2_path)
 model_pose = YOLO(model_pose_path)
+
+dummy = torch.zeros((1, 3, 640, 640)).to(device)
+model2.predict(dummy, device=device, verbose=False)
+model_pose.predict(dummy, device=device, verbose=False)
+
 
 model_stage2 = timm.create_model(
     'tf_efficientnetv2_b0',

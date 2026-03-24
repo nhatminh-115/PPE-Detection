@@ -7,1398 +7,742 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
         *, *::before, *::after { box-sizing: border-box; }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #080c14;
-            color: #c9d1d9;
-            height: 100vh;
-            width: 100vw;
-            display: flex;
-            overflow: hidden;
-        }
-
-        :root {
-            --border: #1e2d3d;
-            --surface: #0d1117;
-            --surface-2: #161b22;
-            --surface-3: #1c2333;
-            --text-primary: #e6edf3;
-            --text-secondary: #8b949e;
-            --text-muted: #484f58;
-            --accent: #388bfd;
-            --accent-dim: #1f3a5c;
-            --danger: #f85149;
-            --danger-dim: #3d1a1a;
-            --success: #3fb950;
-            --success-dim: #1a3d1e;
-        }
-
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-        .sidebar {
-            width: 260px;
-            flex-shrink: 0;
-            background: var(--surface);
-            border-right: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-        }
-
-        .sidebar-header {
-            padding: 24px 20px 20px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .brand-name {
-            font-size: 13px;
-            font-weight: 700;
-            letter-spacing: 0.15em;
-            text-transform: uppercase;
-            color: var(--text-primary);
-        }
-
-        .brand-sub {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
-            color: var(--text-muted);
-            letter-spacing: 0.08em;
-            margin-top: 4px;
-        }
-
-        .nav-section {
-            padding: 16px 12px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .nav-label {
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            padding: 0 8px;
-            margin-bottom: 6px;
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            width: 100%;
-            padding: 9px 10px;
-            border-radius: 6px;
-            background: transparent;
-            border: 1px solid transparent;
-            color: var(--text-secondary);
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            text-align: left;
-            transition: background 0.15s, color 0.15s;
-        }
-
+        body { font-family: 'Inter', sans-serif; background-color: #080c14; color: #c9d1d9; height: 100vh; width: 100vw; display: flex; overflow: hidden; }
+        :root { --border: #1e2d3d; --surface: #0d1117; --surface-2: #161b22; --surface-3: #1c2333; --text-primary: #e6edf3; --text-secondary: #8b949e; --text-muted: #484f58; --accent: #388bfd; --accent-dim: #1f3a5c; --danger: #f85149; --danger-dim: #3d1a1a; --success: #3fb950; --success-dim: #1a3d1e; }
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .sidebar { width: 260px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+        .sidebar-header { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
+        .brand-name { font-size: 13px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-primary); }
+        .brand-sub { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted); letter-spacing: 0.08em; margin-top: 4px; }
+        .nav-section { padding: 16px 12px; border-bottom: 1px solid var(--border); }
+        .nav-label { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); padding: 0 8px; margin-bottom: 6px; }
+        .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border-radius: 6px; background: transparent; border: 1px solid transparent; color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; text-align: left; transition: background 0.15s, color 0.15s; font-family: 'Inter', sans-serif; }
         .nav-item:hover { background: var(--surface-2); color: var(--text-primary); }
-
-        .nav-item.active {
-            background: var(--surface-3);
-            color: var(--text-primary);
-            border-color: var(--border);
-        }
-
-        .status-dot {
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
-            background: var(--success);
-            flex-shrink: 0;
-        }
-
+        .nav-item.active { background: var(--surface-3); color: var(--text-primary); border-color: var(--border); }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .status-dot.live { animation: pulse 1.5s infinite; }
-
-        .sidebar-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px 12px;
-            min-height: 0;
-        }
-
+        .sidebar-content { flex: 1; overflow-y: auto; padding: 16px 12px; min-height: 0; }
         .control-group { margin-bottom: 20px; }
-
-        .control-label {
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            margin-bottom: 8px;
-            display: block;
-        }
-
-        .file-upload-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            width: 100%;
-            padding: 9px 14px;
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text-secondary);
-            font-size: 12px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: border-color 0.15s, color 0.15s, background 0.15s;
-            font-family: 'Inter', sans-serif;
-        }
-
-        .file-upload-btn:hover {
-            border-color: var(--accent);
-            color: var(--text-primary);
-            background: var(--accent-dim);
-        }
-
-        .db-status {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-        }
-
+        .control-label { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; display: block; }
+        .file-upload-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 9px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 500; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s; font-family: 'Inter', sans-serif; }
+        .file-upload-btn:hover { border-color: var(--accent); color: var(--text-primary); background: var(--accent-dim); }
+        .db-status { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; }
         .db-status-text { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
         .db-status-sub { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); }
-
-        .sidebar-footer {
-            padding: 16px 12px;
-            border-top: 1px solid var(--border);
-        }
-
-        .btn-primary {
-            width: 100%;
-            padding: 10px;
-            background: var(--accent);
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            letter-spacing: 0.02em;
-            transition: opacity 0.15s;
-            font-family: 'Inter', sans-serif;
-        }
-
+        .sidebar-footer { padding: 16px 12px; border-top: 1px solid var(--border); }
+        .btn-primary { width: 100%; padding: 10px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; letter-spacing: 0.02em; transition: opacity 0.15s; font-family: 'Inter', sans-serif; }
         .btn-primary:hover { opacity: 0.85; }
         .btn-danger-bg { background: var(--danger) !important; }
-
-        .main {
-            flex: 1;
-            background: var(--surface);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .topbar {
-            height: 52px;
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 24px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .topbar-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-primary);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
+        .main { flex: 1; background: var(--surface); display: flex; flex-direction: column; overflow: hidden; }
+        .topbar { height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--border); }
+        .topbar-title { font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 10px; }
         .topbar-divider { width: 1px; height: 14px; background: var(--border); }
         .topbar-sub { font-size: 12px; color: var(--text-muted); }
-
-        .status-badge {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
-            font-weight: 500;
-            padding: 4px 10px;
-            border-radius: 4px;
-            border: 1px solid var(--border);
-            background: var(--surface-2);
-            color: var(--text-muted);
-            letter-spacing: 0.05em;
-        }
-
-        .status-badge.live {
-            border-color: var(--success);
-            background: var(--success-dim);
-            color: var(--success);
-        }
-
-        .tab-panel {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            padding: 20px 24px 24px;
-        }
-
-        .video-wrapper {
-            flex: 1;
-            background: #000;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .video-placeholder-title {
-            font-size: 13px;
-            color: var(--text-muted);
-            font-weight: 500;
-            letter-spacing: 0.05em;
-            text-align: center;
-        }
-
-        .video-placeholder-sub {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-top: 6px;
-            opacity: 0.5;
-            text-align: center;
-        }
-
-        .btn-secondary {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 7px 14px;
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text-secondary);
-            font-size: 12px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: border-color 0.15s, color 0.15s;
-            font-family: 'Inter', sans-serif;
-        }
-
+        .status-badge { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); letter-spacing: 0.05em; }
+        .status-badge.live { border-color: var(--success); background: var(--success-dim); color: var(--success); }
+        .tab-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 20px 24px 24px; }
+        .camera-grid { flex: 1; display: grid; gap: 8px; overflow: hidden; }
+        .camera-grid.grid-1 { grid-template-columns: 1fr; }
+        .camera-grid.grid-2 { grid-template-columns: 1fr 1fr; }
+        .camera-grid.grid-3, .camera-grid.grid-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        .camera-cell { position: relative; background: #000; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: border-color 0.15s; }
+        .camera-cell:hover { border-color: var(--accent); }
+        .camera-cell img { width: 100%; height: 100%; object-fit: contain; }
+        .camera-cell-overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: 6px 10px; background: linear-gradient(transparent, rgba(0,0,0,0.7)); display: flex; align-items: center; justify-content: space-between; }
+        .camera-cell-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #fff; font-weight: 500; }
+        .camera-cell-remove { width: 20px; height: 20px; border-radius: 4px; background: rgba(248,81,73,0.2); border: 1px solid rgba(248,81,73,0.4); color: var(--danger); font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; font-family: 'Inter', sans-serif; }
+        .camera-cell:hover .camera-cell-remove { opacity: 1; }
+        .zone-btn { position: absolute; top: 8px; left: 8px; padding: 4px 8px; background: rgba(8,12,20,0.8); border: 1px solid var(--accent); border-radius: 4px; color: var(--accent); font-size: 10px; font-weight: 600; cursor: pointer; font-family: 'JetBrains Mono', monospace; opacity: 0; transition: opacity 0.15s; letter-spacing: 0.05em; }
+        .zone-btn.has-zone { border-color: #3fb950; color: #3fb950; }
+        .camera-cell:hover .zone-btn { opacity: 1; }
+        .camera-placeholder { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .camera-placeholder-text { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+        .camera-placeholder-sub { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); opacity: 0.5; }
+        .camera-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; }
+        .camera-item-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex-shrink: 0; animation: pulse 1.5s infinite; }
+        .camera-item-label { font-size: 12px; color: var(--text-secondary); font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .camera-item-id { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted); }
+        .camera-item-remove { width: 18px; height: 18px; border-radius: 3px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; transition: color 0.15s; }
+        .camera-item-remove:hover { color: var(--danger); }
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(8,12,20,0.85); backdrop-filter: blur(4px); z-index: 100; display: flex; align-items: center; justify-content: center; }
+        .modal-backdrop.hidden { display: none; }
+        .modal { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 24px; width: 360px; box-shadow: 0 24px 64px rgba(0,0,0,0.5); }
+        .modal-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 16px; }
+        .modal-input { width: 100%; padding: 9px 12px; background: var(--surface-3); border: 1px solid var(--border); border-radius: 6px; color: var(--text-primary); font-size: 13px; font-family: 'Inter', sans-serif; outline: none; margin-bottom: 10px; transition: border-color 0.15s; }
+        .modal-input:focus { border-color: var(--accent); }
+        .modal-row { display: flex; gap: 8px; margin-top: 4px; }
+        .modal-btn { flex: 1; padding: 9px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); font-family: 'Inter', sans-serif; transition: opacity 0.15s; }
+        .modal-btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .modal-btn-cancel { background: var(--surface-3); color: var(--text-secondary); }
+        .modal-btn:hover { opacity: 0.85; }
+        .modal-tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+        .modal-tab { flex: 1; padding: 7px; border-radius: 5px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--surface-3); color: var(--text-muted); text-align: center; transition: all 0.15s; font-family: 'Inter', sans-serif; }
+        .modal-tab.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+        .btn-secondary { display: flex; align-items: center; gap: 6px; padding: 7px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text-secondary); font-size: 12px; font-weight: 500; cursor: pointer; transition: border-color 0.15s, color 0.15s; font-family: 'Inter', sans-serif; }
         .btn-secondary:hover { border-color: var(--accent); color: var(--text-primary); }
         .btn-secondary.danger:hover { border-color: var(--danger); color: var(--danger); }
-
         .violations-container { flex: 1; overflow-y: auto; margin-top: 16px; }
-
-        .violations-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-            gap: 12px;
-        }
-
-        .violation-card {
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            overflow: hidden;
-            transition: border-color 0.15s;
-        }
-
+        .violations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+        .violation-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; transition: border-color 0.15s; cursor: pointer; }
         .violation-card:hover { border-color: #2d3f52; }
-
-        .card-image {
-            height: 160px;
-            background: var(--surface-3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-            border-bottom: 1px solid var(--border);
-        }
-
+        .card-image { height: 160px; background: var(--surface-3); display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; border-bottom: 1px solid var(--border); }
         .card-image img { width: 100%; height: 100%; object-fit: cover; }
-
-        .card-id-badge {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
-            font-weight: 500;
-            background: rgba(8, 12, 20, 0.85);
-            border: 1px solid var(--border);
-            color: var(--text-secondary);
-            padding: 2px 7px;
-            border-radius: 4px;
-        }
-
+        .card-id-badge { position: absolute; top: 8px; right: 8px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; background: rgba(8,12,20,0.85); border: 1px solid var(--border); color: var(--text-secondary); padding: 2px 7px; border-radius: 4px; }
         .card-body { padding: 12px; }
-
-        .card-meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
+        .card-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .card-time { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted); }
         .card-status { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-
-        .card-violations-label {
-            font-size: 10px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: var(--text-muted);
-            margin-bottom: 6px;
-        }
-
+        .card-violations-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 6px; }
         .violation-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-
-        .vtag {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 10px;
-            padding: 2px 7px;
-            border-radius: 3px;
-            background: var(--danger-dim);
-            color: var(--danger);
-            border: 1px solid rgba(248, 81, 73, 0.2);
-        }
-
-        #toast-container {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            z-index: 100;
-        }
-
-        .toast {
-            font-size: 12px;
-            font-weight: 500;
-            padding: 10px 16px;
-            border-radius: 6px;
-            border: 1px solid;
-            transition: opacity 0.3s;
-            max-width: 300px;
-        }
-
+        .vtag { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 7px; border-radius: 3px; background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(248,81,73,0.2); }
+        #toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
+        .toast { font-size: 12px; font-weight: 500; padding: 10px 16px; border-radius: 6px; border: 1px solid; transition: opacity 0.3s; max-width: 300px; }
         .toast.success { background: rgba(26,61,30,0.95); border-color: rgba(63,185,80,0.4); color: #3fb950; }
-        .toast.error   { background: rgba(61,26,26,0.95);  border-color: rgba(248,81,73,0.4);  color: #f85149; }
-        .toast.violation {
-            background: rgba(61,26,26,0.97);
-            border-color: rgba(248,81,73,0.5);
-            color: #f85149;
-            max-width: 320px;
-        }
-        .toast.violation .vio-title {
-            font-weight: 600;
-            font-size: 12px;
-            margin-bottom: 3px;
-        }
-        .toast.violation .vio-detail {
-            font-size: 11px;
-            color: #c9a0a0;
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-
-        /* Lightbox */
-        .lightbox {
-            position: fixed;
-            inset: 0;
-            z-index: 200;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
-        }
-
+        .toast.error { background: rgba(61,26,26,0.95); border-color: rgba(248,81,73,0.4); color: #f85149; }
+        .toast.violation { background: rgba(61,26,26,0.97); border-color: rgba(248,81,73,0.5); color: #f85149; max-width: 320px; }
+        .toast.violation .vio-title { font-weight: 600; font-size: 12px; margin-bottom: 3px; }
+        .toast.violation .vio-detail { font-size: 11px; color: #c9a0a0; font-family: 'JetBrains Mono', monospace; }
+        .lightbox { position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px; }
         .lightbox.hidden { display: none; }
-
-        .lightbox-backdrop {
-            position: absolute;
-            inset: 0;
-            background: rgba(8, 12, 20, 0.88);
-            backdrop-filter: blur(6px);
-        }
-
-        .lightbox-panel {
-            position: relative;
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            overflow: hidden;
-            max-width: 860px;
-            width: 100%;
-            max-height: 90vh;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 24px 64px rgba(0,0,0,0.6);
-            animation: lb-in 0.18s ease;
-        }
-
-        @keyframes lb-in {
-            from { opacity: 0; transform: scale(0.96); }
-            to   { opacity: 1; transform: scale(1); }
-        }
-
-        .lightbox-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border);
-            flex-shrink: 0;
-        }
-
-        .lightbox-title {
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--text-primary);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .lightbox-title .lb-id {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
-            color: var(--text-secondary);
-            background: var(--surface-3);
-            border: 1px solid var(--border);
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-
-        .lightbox-close {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 28px;
-            height: 28px;
-            border-radius: 6px;
-            background: transparent;
-            border: 1px solid transparent;
-            color: var(--text-muted);
-            cursor: pointer;
-            transition: background 0.15s, color 0.15s, border-color 0.15s;
-        }
-
-        .lightbox-close:hover {
-            background: var(--surface-3);
-            border-color: var(--border);
-            color: var(--text-primary);
-        }
-
-        .lightbox-image-wrap {
-            flex: 1;
-            min-height: 0;
-            background: #000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-        }
-
-        .lightbox-image-wrap img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            display: block;
-        }
-
-        .lightbox-footer {
-            flex-shrink: 0;
-            padding: 12px 16px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-        }
-
-        .lightbox-time {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11px;
-            color: var(--text-muted);
-        }
-
+        .lightbox-backdrop { position: absolute; inset: 0; background: rgba(8,12,20,0.88); backdrop-filter: blur(6px); }
+        .lightbox-panel { position: relative; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; max-width: 860px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 24px 64px rgba(0,0,0,0.6); }
+        .lightbox-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+        .lightbox-title { font-size: 12px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 10px; }
+        .lightbox-title .lb-id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-secondary); background: var(--surface-3); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; }
+        .lightbox-close { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: transparent; border: 1px solid transparent; color: var(--text-muted); cursor: pointer; }
+        .lightbox-close:hover { background: var(--surface-3); border-color: var(--border); color: var(--text-primary); }
+        .lightbox-image-wrap { flex: 1; min-height: 0; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .lightbox-image-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+        .lightbox-footer { flex-shrink: 0; padding: 12px 16px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
         .lightbox-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-
-        .violation-card { cursor: pointer; }
-        .dual-slider {
-            position: relative;
-            height: 6px;
-            border-radius: 3px;
-            background: var(--surface-3);
-            margin: 4px 0;
-        }
-
-        .dual-slider-fill {
-            position: absolute;
-            height: 100%;
-            width: 100%;
-            border-radius: 3px;
-            pointer-events: none;
-        }
-
-        .dual-range {
-            position: absolute;
-            width: 100%;
-            height: 6px;
-            background: transparent;
-            -webkit-appearance: none;
-            pointer-events: none;
-            top: 0;
-            left: 0;
-            margin: 0;
-        }
-
-        .dual-range::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            border: 2px solid var(--surface);
-            pointer-events: all;
-            cursor: pointer;
-            position: relative;
-            z-index: 2;
-        }
-
-        .range-warn::-webkit-slider-thumb {
-            background: #f85149;
-            box-shadow: 0 0 0 2px rgba(248,81,73,0.3);
-        }
-
-        .range-ok::-webkit-slider-thumb {
-            background: #3fb950;
-            box-shadow: 0 0 0 2px rgba(63,185,80,0.3);
-        }
-
-        .dual-range::-moz-range-thumb {
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            border: 2px solid var(--surface);
-            pointer-events: all;
-            cursor: pointer;
-        }
-
-        .range-warn::-moz-range-thumb { background: #f85149; }
-        .range-ok::-moz-range-thumb   { background: #3fb950; }
-
-
-        .stat-card { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:16px; text-align:center; }
-        .stat-value { font-family:'JetBrains Mono',monospace; font-size:36px; font-weight:700; color:var(--text-primary); line-height:1; margin-bottom:8px; }
-        .stat-label { font-size:12px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em; margin-top:4px; }
-        .dash-panel { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:14px; }
-        .dash-panel-title { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); margin-bottom:8px; }
-        .offender-row { display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border); }
-        .offender-row:last-child { border-bottom:none; }
-        .offender-id { font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--text-primary); font-weight:500; }
-        .offender-bar-wrap { flex:1; margin:0 10px; height:4px; background:var(--surface-3); border-radius:2px; }
-        .offender-bar { height:100%; background:var(--danger); border-radius:2px; }
-        .offender-count { font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--text-secondary); font-weight:600; }
+        .dual-slider { position: relative; height: 6px; border-radius: 3px; background: var(--surface-3); margin: 4px 0; }
+        .dual-slider-fill { position: absolute; height: 100%; width: 100%; border-radius: 3px; pointer-events: none; }
+        .dual-range { position: absolute; width: 100%; height: 6px; background: transparent; -webkit-appearance: none; pointer-events: none; top: 0; left: 0; margin: 0; }
+        .dual-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--surface); pointer-events: all; cursor: pointer; }
+        .range-warn::-webkit-slider-thumb { background: #f85149; }
+        .range-ok::-webkit-slider-thumb { background: #3fb950; }
+        .stat-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
+        .stat-value { font-family: 'JetBrains Mono', monospace; font-size: 36px; font-weight: 700; color: var(--text-primary); line-height: 1; margin-bottom: 8px; }
+        .stat-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+        .dash-panel { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+        .dash-panel-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 8px; }
+        .offender-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); }
+        .offender-row:last-child { border-bottom: none; }
+        .offender-id { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-primary); font-weight: 500; }
+        .offender-bar-wrap { flex: 1; margin: 0 10px; height: 4px; background: var(--surface-3); border-radius: 2px; }
+        .offender-bar { height: 100%; background: var(--danger); border-radius: 2px; }
+        .offender-count { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-secondary); font-weight: 600; }
+        /* Zone modal */
+        .zone-modal { position: fixed; inset: 0; z-index: 300; background: #080c14; display: flex; flex-direction: column; }
+        .zone-modal.hidden { display: none; }
+        .zone-topbar { height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
+        .zone-topbar-title { font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 12px; }
+        .zone-hint { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); }
+        .zone-canvas-wrap { flex: 1; position: relative; background: #000; overflow: hidden; }
+        .zone-frozen-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+        .zone-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+        .zone-actions { display: flex; align-items: center; gap: 8px; }
     </style>
 </head>
 <body>
-
-    <aside class="sidebar">
-        <div class="sidebar-header">
-            <div class="brand-name">PPE Vision</div>
-            <div class="brand-sub">OPERATIONS CENTER / v2.1</div>
-        </div>
-
-        <div class="nav-section">
-            <div class="nav-label">Views</div>
-            <button onclick="switchTab('live-tab')" id="nav-live" class="nav-item active">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="1" y="2" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
-                    <circle cx="8" cy="7" r="2" stroke="currentColor" stroke-width="1.3"/>
-                    <path d="M5 14h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-                Live Feed
-            </button>
-            <button onclick="switchTab('log-tab')" id="nav-log" class="nav-item">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="2" y="1.5" width="12" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
-                    <path d="M5 5.5h6M5 8h4M5 10.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                </svg>
-                Violation Logs
-            </button>
-            <button onclick="switchTab('dashboard-tab')" id="nav-dashboard" class="nav-item">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="1" y="8" width="4" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/>
-                    <rect x="6" y="5" width="4" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/>
-                    <rect x="11" y="2" width="4" height="12" rx="1" stroke="currentColor" stroke-width="1.3"/>
-                </svg>
-                Analytics
-            </button>
-        </div>
-
-        <div class="sidebar-content">
-            <div class="control-group">
-                <span class="control-label">Video Source</span>
-                <label for="video-upload" class="file-upload-btn">
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M8 10.5V3M8 3L5.5 5.5M8 3L10.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M2.5 12.5h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                    </svg>
-                    Select Local Video
-                </label>
-                <input type="file" id="video-upload" class="hidden" accept="video/mp4,video/avi" onchange="uploadVideoFile()">
-                <select id="camera-select" style="width:100%;margin-top:8px;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-size:12px;font-family:'Inter',sans-serif;cursor:pointer;">
-                    <option value="0">Camera 0 (Built-in)</option>
-                    <option value="1">Camera 1 (Logitech)</option>
-                </select>
-                <button id="btn-webcam" onclick="toggleWebcam()" class="file-upload-btn" style="margin-top:8px;">
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="7" r="2.5" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="4" width="14" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 13v1.5M11 13v1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                    Use Webcam
-                </button>
-                <button id="btn-cam" onclick="toggleCamMode()" class="file-upload-btn" style="margin-top:8px;">
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                    CAM Overlay
-                </button>
-                <div id="file-name" style="font-size:10px;color:var(--text-muted);margin-top:6px;font-family:'JetBrains Mono',monospace;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">No file selected</div>
-            </div>
-
-            <div class="control-group">
-                <span class="control-label">Database</span>
-                <div class="db-status">
-                    <div class="status-dot"></div>
-                    <div>
-                        <div class="db-status-text">Supabase</div>
-                        <div class="db-status-sub">Connected</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-            <div class="control-group">
-                <span class="control-label">Detection Thresholds</span>
-
-                <!-- Hardhat -->
-                <div style="margin-bottom:14px;">
-                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-                        <span style="font-size:11px;color:var(--text-secondary);">Hardhat</span>
-                        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted);">
-                            warn <span id="hardhat-warn-val" style="color:#f59e0b;">0.40</span>
-                            &nbsp;ok <span id="hardhat-ok-val" style="color:var(--success);">0.70</span>
-                        </span>
-                    </div>
-                    <div class="dual-slider" id="hardhat-track">
-                        <div class="dual-slider-fill" id="hardhat-fill"></div>
-                        <input type="range" class="dual-range range-warn" id="hardhat-warn" min="0.05" max="0.90" step="0.05" value="0.40"
-                            oninput="onDualSlider('hardhat')" onchange="applyThresholds()">
-                        <input type="range" class="dual-range range-ok" id="hardhat-ok" min="0.05" max="0.90" step="0.05" value="0.70"
-                            oninput="onDualSlider('hardhat')" onchange="applyThresholds()">
-                    </div>
-                    <div style="display:flex;justify-content:space-between;margin-top:3px;">
-                        <span style="font-size:9px;color:var(--text-muted);">0.05</span>
-                        <span style="font-size:9px;color:var(--text-muted);">0.90</span>
-                    </div>
-                </div>
-
-                <!-- Vest -->
-                <div>
-                    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-                        <span style="font-size:11px;color:var(--text-secondary);">Vest</span>
-                        <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted);">
-                            warn <span id="vest-warn-val" style="color:#f59e0b;">0.20</span>
-                            &nbsp;ok <span id="vest-ok-val" style="color:var(--success);">0.50</span>
-                        </span>
-                    </div>
-                    <div class="dual-slider" id="vest-track">
-                        <div class="dual-slider-fill" id="vest-fill"></div>
-                        <input type="range" class="dual-range range-warn" id="vest-warn" min="0.05" max="0.90" step="0.05" value="0.20"
-                            oninput="onDualSlider('vest')" onchange="applyThresholds()">
-                        <input type="range" class="dual-range range-ok" id="vest-ok" min="0.05" max="0.90" step="0.05" value="0.50"
-                            oninput="onDualSlider('vest')" onchange="applyThresholds()">
-                    </div>
-                    <div style="display:flex;justify-content:space-between;margin-top:3px;">
-                        <span style="font-size:9px;color:var(--text-muted);">0.05</span>
-                        <span style="font-size:9px;color:var(--text-muted);">0.90</span>
-                    </div>
-                </div>
-            </div>
-
-        <div class="sidebar-footer">
-            <button id="btn-stream" class="btn-primary" onclick="toggleStream()">
-                Start Inference Engine
-            </button>
-        </div>
-    </aside>
-
-    <main class="main">
-        <div class="topbar">
-            <div class="topbar-title">
-                <span id="topbar-title-text">Live Inference — Zone A</span>
-                <div class="topbar-divider"></div>
-                <span class="topbar-sub" id="topbar-sub-text">Monitor active</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-                <div id="log-actions" style="display:none;gap:8px;">
-                    <button onclick="fetchViolations()" class="btn-secondary">
-                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                            <path d="M8 1v4l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        Refresh
-                    </button>
-                    <button onclick="flushImages()" class="btn-secondary danger">
-                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M2.5 4.5h11M6 4.5V3h4v1.5M5.5 4.5l.5 8h4l.5-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                        Flush Images
-                    </button>
-                </div>
-                <span id="stream-status-badge" class="status-badge">OFFLINE</span>
-            </div>
-        </div>
-
-        <div id="live-tab" class="tab-panel">
-            <div class="video-wrapper">
-                <img id="video-stream" src="" alt="" class="hidden" style="width:100%;height:100%;object-fit:contain;">
-                <div id="offline-placeholder">
-                    <div class="video-placeholder-title">Engine Standing By</div>
-                    <div class="video-placeholder-sub">Press "Start Inference Engine" to begin</div>
-                </div>
-            </div>
-        </div>
-
-        <div id="log-tab" class="tab-panel hidden">
-            <div class="violations-container">
-                <div id="violations-grid" class="violations-grid">
-                    <div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">
-                        Click Refresh to pull records from Supabase.
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div id="dashboard-tab" class="tab-panel hidden" style="overflow-y:auto;">
-            <!-- Session filter -->
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-                <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);white-space:nowrap;">Session</span>
-                <select id="session-select" onchange="fetchStats()"
-                    style="flex:1;padding:7px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-size:12px;font-family:'JetBrains Mono',monospace;cursor:pointer;">
-                    <option value="">All Sessions</option>
-                </select>
-                <button onclick="fetchStats()" class="btn-secondary" style="flex-shrink:0;">
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                        <path d="M8 1v4l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    Refresh
+<aside class="sidebar">
+    <div class="sidebar-header">
+        <div class="brand-name">PPE Vision</div>
+        <div class="brand-sub">OPERATIONS CENTER / v3.0</div>
+    </div>
+    <div class="nav-section">
+        <div class="nav-label">Views</div>
+        <button onclick="switchTab('live-tab')" id="nav-live" class="nav-item active">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="7" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M5 14h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            Live Feed
+        </button>
+        <button onclick="switchTab('log-tab')" id="nav-log" class="nav-item">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="1.5" width="12" height="13" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 5.5h6M5 8h4M5 10.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            Violation Logs
+        </button>
+        <button onclick="switchTab('dashboard-tab')" id="nav-dashboard" class="nav-item">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="8" width="4" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="6" y="5" width="4" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="11" y="2" width="4" height="12" rx="1" stroke="currentColor" stroke-width="1.3"/></svg>
+            Analytics
+        </button>
+    </div>
+    <div class="sidebar-content">
+        <div class="control-group">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <span class="control-label" style="margin-bottom:0;">Active Cameras</span>
+                <button onclick="openAddModal()" style="display:flex;align-items:center;gap:4px;padding:4px 8px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:4px;color:var(--accent);font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;">
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                    Add
                 </button>
             </div>
-            <!-- Stat cards row -->
-            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;">
-                <div class="stat-card">
-                    <div class="stat-value" id="stat-total">—</div>
-                    <div class="stat-label">Total Events</div>
+            <div id="camera-list"><div style="font-size:11px;color:var(--text-muted);text-align:center;padding:12px 0;">No cameras added yet</div></div>
+        </div>
+        <div class="control-group">
+            <span class="control-label">Video File</span>
+            <label for="video-upload" class="file-upload-btn">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 10.5V3M8 3L5.5 5.5M8 3L10.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 12.5h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                Select Local Video
+            </label>
+            <input type="file" id="video-upload" class="hidden" accept="video/mp4,video/avi" onchange="uploadVideoFile()">
+            <div id="file-name" style="font-size:10px;color:var(--text-muted);margin-top:6px;font-family:'JetBrains Mono',monospace;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">No file selected</div>
+        </div>
+        <div class="control-group">
+            <span class="control-label">Controls</span>
+            <button id="btn-cam" onclick="toggleCamMode()" class="file-upload-btn">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                CAM Overlay
+            </button>
+        </div>
+        <div class="control-group">
+            <span class="control-label">Database</span>
+            <div class="db-status"><div class="status-dot"></div><div><div class="db-status-text">Supabase</div><div class="db-status-sub">Connected</div></div></div>
+        </div>
+        <div class="control-group">
+            <span class="control-label">Detection Thresholds</span>
+            <div style="margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                    <span style="font-size:11px;color:var(--text-secondary);">Hardhat</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted);">warn <span id="hardhat-warn-val" style="color:#f59e0b;">0.40</span> ok <span id="hardhat-ok-val" style="color:var(--success);">0.70</span></span>
                 </div>
-                <div class="stat-card" style="border-color:rgba(248,81,73,0.3);">
-                    <div class="stat-value" id="stat-hardhat" style="color:#f85149;">—</div>
-                    <div class="stat-label">Missing Hardhat</div>
-                </div>
-                <div class="stat-card" style="border-color:rgba(245,158,11,0.3);">
-                    <div class="stat-value" id="stat-vest" style="color:#f59e0b;">—</div>
-                    <div class="stat-label">Missing Vest</div>
-                </div>
-                <div class="stat-card" style="border-color:rgba(63,185,80,0.3);">
-                    <div class="stat-value" id="stat-peak" style="color:#3fb950;">—</div>
-                    <div class="stat-label">Peak Hour (ICT)</div>
-                </div>
-                <div class="stat-card" style="border-color:rgba(56,139,253,0.3);">
-                    <div class="stat-value" id="stat-top-id" style="color:var(--accent);">—</div>
-                    <div class="stat-label">Top Offender ID</div>
-                </div>
+                <div class="dual-slider"><div class="dual-slider-fill" id="hardhat-fill"></div><input type="range" class="dual-range range-warn" id="hardhat-warn" min="0.05" max="0.90" step="0.05" value="0.40" oninput="onDualSlider('hardhat')" onchange="applyThresholds()"><input type="range" class="dual-range range-ok" id="hardhat-ok" min="0.05" max="0.90" step="0.05" value="0.70" oninput="onDualSlider('hardhat')" onchange="applyThresholds()"></div>
             </div>
-
-            <!-- Charts row -->
-            <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;">
-                <!-- Hourly bar chart -->
-                <div class="dash-panel">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <div class="dash-panel-title">Violations by Hour (ICT)</div>
-                        <span id="peak-label" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#f59e0b;"></span>
-                    </div>
-                    <div id="hourly-chart" style="display:flex;align-items:flex-end;gap:3px;height:140px;padding:8px 0;"></div>
-                    <div style="display:flex;justify-content:space-between;margin-top:2px;">
-                        <span style="font-size:10px;color:var(--text-muted);">00:00</span>
-                        <span style="font-size:10px;color:var(--text-muted);">12:00</span>
-                        <span style="font-size:10px;color:var(--text-muted);">23:00</span>
-                    </div>
+            <div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                    <span style="font-size:11px;color:var(--text-secondary);">Vest</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted);">warn <span id="vest-warn-val" style="color:#f59e0b;">0.20</span> ok <span id="vest-ok-val" style="color:var(--success);">0.50</span></span>
                 </div>
-
-                <!-- Donut chart -->
-                <div class="dash-panel" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
-                    <div class="dash-panel-title" style="align-self:flex-start;">Violation Type</div>
-                    <svg id="donut-svg" viewBox="0 0 120 120" width="120" height="120" style="margin:8px 0;">
-                        <circle id="donut-bg"      cx="60" cy="60" r="45" fill="none" stroke="var(--surface-3)" stroke-width="18"/>
-                        <circle id="donut-hardhat" cx="60" cy="60" r="45" fill="none" stroke="#f85149" stroke-width="18"
-                            stroke-dasharray="0 283" stroke-dashoffset="70.75" transform="rotate(-90 60 60)"/>
-                        <circle id="donut-vest"    cx="60" cy="60" r="45" fill="none" stroke="#f59e0b" stroke-width="18"
-                            stroke-dasharray="0 283" stroke-dashoffset="70.75" transform="rotate(-90 60 60)"/>
-                    </svg>
-                    <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                        <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
-                            <span style="width:10px;height:10px;border-radius:50%;background:#f85149;flex-shrink:0;"></span>
-                            <span style="color:var(--text-secondary);">Hardhat</span>
-                            <span id="donut-hardhat-pct" style="margin-left:auto;font-family:'JetBrains Mono',monospace;color:#f85149;">—%</span>
-                        </div>
-                        <div style="display:flex;align-items:center;gap:6px;font-size:12px;">
-                            <span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span>
-                            <span style="color:var(--text-secondary);">Vest</span>
-                            <span id="donut-vest-pct" style="margin-left:auto;font-family:'JetBrains Mono',monospace;color:#f59e0b;">—%</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Top offenders -->
-                <div class="dash-panel">
-                    <div class="dash-panel-title">Top Offenders</div>
-                    <div id="top-offenders" style="margin-top:8px;"></div>
-                </div>
+                <div class="dual-slider"><div class="dual-slider-fill" id="vest-fill"></div><input type="range" class="dual-range range-warn" id="vest-warn" min="0.05" max="0.90" step="0.05" value="0.20" oninput="onDualSlider('vest')" onchange="applyThresholds()"><input type="range" class="dual-range range-ok" id="vest-ok" min="0.05" max="0.90" step="0.05" value="0.50" oninput="onDualSlider('vest')" onchange="applyThresholds()"></div>
             </div>
         </div>
-    </main>
+    </div>
+    <div class="sidebar-footer">
+        <button id="btn-stream" class="btn-primary" onclick="toggleAllStreams()">Start All Cameras</button>
+    </div>
+</aside>
 
-    <div id="toast-container"></div>
+<main class="main">
+    <div class="topbar">
+        <div class="topbar-title">
+            <span id="topbar-title-text">Live Inference</span>
+            <div class="topbar-divider"></div>
+            <span class="topbar-sub" id="topbar-sub-text">0 cameras active</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <div id="log-actions" style="display:none;gap:8px;">
+                <button onclick="fetchViolations()" class="btn-secondary"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M8 1v4l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Refresh</button>
+                <button onclick="flushImages()" class="btn-secondary danger"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M5.5 4.5l.5 8h4l.5-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>Flush</button>
+            </div>
+            <div id="view-toggle" style="display:none;gap:4px;">
+                <button onclick="setViewMode('grid')" id="btn-grid" class="btn-secondary" title="Grid"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/></svg></button>
+                <button onclick="setViewMode('single')" id="btn-single" class="btn-secondary" title="Single"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="1.5" stroke="currentColor" stroke-width="1.3"/></svg></button>
+            </div>
+            <span id="stream-status-badge" class="status-badge">OFFLINE</span>
+        </div>
+    </div>
 
-    <!-- Lightbox modal -->
-    <div id="lightbox" class="lightbox hidden" onclick="handleLightboxBackdropClick(event)">
-        <div class="lightbox-backdrop"></div>
-        <div class="lightbox-panel">
-            <div class="lightbox-header">
-                <div class="lightbox-title">
-                    Violation Detail
-                    <span class="lb-id" id="lb-id">ID —</span>
-                    <span class="lb-id" id="lb-time-header" style="color:var(--text-muted);"></span>
-                </div>
-                <button class="lightbox-close" onclick="closeLightbox()" title="Close (Esc)">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="lightbox-image-wrap">
-                <img id="lb-img" src="" alt="Violation">
-            </div>
-            <div class="lightbox-footer">
-                <span class="lightbox-time">Missing PPE</span>
-                <div class="lightbox-tags" id="lb-tags"></div>
+    <div id="live-tab" class="tab-panel">
+        <div id="camera-grid" class="camera-grid grid-1">
+            <div class="camera-cell" id="empty-placeholder">
+                <div class="camera-placeholder"><div class="camera-placeholder-text">No Cameras Active</div><div class="camera-placeholder-sub">Add a camera to begin</div></div>
             </div>
         </div>
     </div>
 
-    <script>
-        let isStreaming = false;
+    <div id="log-tab" class="tab-panel hidden">
+        <div class="violations-container"><div id="violations-grid" class="violations-grid"><div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Click Refresh to pull records.</div></div></div>
+    </div>
 
-        function onDualSlider(type) {
-            const warnEl = document.getElementById(type + '-warn');
-            const okEl   = document.getElementById(type + '-ok');
-            let warn = parseFloat(warnEl.value);
-            let ok   = parseFloat(okEl.value);
+    <div id="dashboard-tab" class="tab-panel hidden" style="overflow-y:auto;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);white-space:nowrap;">Session</span>
+            <select id="session-select" onchange="fetchStats()" style="flex:1;padding:7px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-size:12px;font-family:'JetBrains Mono',monospace;cursor:pointer;"><option value="">All Sessions</option></select>
+            <button onclick="fetchStats()" class="btn-secondary" style="flex-shrink:0;"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M8 1v4l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Refresh</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;">
+            <div class="stat-card"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Total Events</div></div>
+            <div class="stat-card" style="border-color:rgba(248,81,73,0.3);"><div class="stat-value" id="stat-hardhat" style="color:#f85149;">—</div><div class="stat-label">Missing Hardhat</div></div>
+            <div class="stat-card" style="border-color:rgba(245,158,11,0.3);"><div class="stat-value" id="stat-vest" style="color:#f59e0b;">—</div><div class="stat-label">Missing Vest</div></div>
+            <div class="stat-card" style="border-color:rgba(63,185,80,0.3);"><div class="stat-value" id="stat-peak" style="color:#3fb950;">—</div><div class="stat-label">Peak Hour</div></div>
+            <div class="stat-card" style="border-color:rgba(56,139,253,0.3);"><div class="stat-value" id="stat-top-id" style="color:var(--accent);">—</div><div class="stat-label">Top Offender</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;">
+            <div class="dash-panel">
+                <div style="display:flex;justify-content:space-between;align-items:center;"><div class="dash-panel-title">Violations by Hour (ICT)</div><span id="peak-label" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#f59e0b;"></span></div>
+                <div id="hourly-chart" style="display:flex;align-items:flex-end;gap:3px;height:140px;padding:8px 0;"></div>
+                <div style="display:flex;justify-content:space-between;margin-top:2px;"><span style="font-size:10px;color:var(--text-muted);">00:00</span><span style="font-size:10px;color:var(--text-muted);">12:00</span><span style="font-size:10px;color:var(--text-muted);">23:00</span></div>
+            </div>
+            <div class="dash-panel" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                <div class="dash-panel-title" style="align-self:flex-start;">Violation Type</div>
+                <svg viewBox="0 0 120 120" width="120" height="120" style="margin:8px 0;"><circle cx="60" cy="60" r="45" fill="none" stroke="var(--surface-3)" stroke-width="18"/><circle id="donut-hardhat" cx="60" cy="60" r="45" fill="none" stroke="#f85149" stroke-width="18" stroke-dasharray="0 283" stroke-dashoffset="0" transform="rotate(-90 60 60)"/><circle id="donut-vest" cx="60" cy="60" r="45" fill="none" stroke="#f59e0b" stroke-width="18" stroke-dasharray="0 283" stroke-dashoffset="0" transform="rotate(-90 60 60)"/></svg>
+                <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+                    <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:10px;height:10px;border-radius:50%;background:#f85149;flex-shrink:0;"></span><span style="color:var(--text-secondary);">Hardhat</span><span id="donut-hardhat-pct" style="margin-left:auto;font-family:'JetBrains Mono',monospace;color:#f85149;">—%</span></div>
+                    <div style="display:flex;align-items:center;gap:6px;font-size:12px;"><span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span><span style="color:var(--text-secondary);">Vest</span><span id="donut-vest-pct" style="margin-left:auto;font-family:'JetBrains Mono',monospace;color:#f59e0b;">—%</span></div>
+                </div>
+            </div>
+            <div class="dash-panel"><div class="dash-panel-title">Top Offenders</div><div id="top-offenders" style="margin-top:8px;"></div></div>
+        </div>
+    </div>
+</main>
 
-            // Enforce warn < ok
-            if (warn >= ok) {
-                if (document.activeElement === warnEl) {
-                    warn = ok - 0.05;
-                    warnEl.value = warn;
-                } else {
-                    ok = warn + 0.05;
-                    okEl.value = ok;
-                }
-            }
+<!-- Add Camera Modal -->
+<div id="add-modal" class="modal-backdrop hidden">
+    <div class="modal">
+        <div class="modal-title">Add Camera</div>
+        <div class="modal-tabs"><button class="modal-tab active" id="tab-webcam" onclick="switchModalTab('webcam')">Webcam</button><button class="modal-tab" id="tab-rtsp" onclick="switchModalTab('rtsp')">RTSP / URL</button></div>
+        <div id="modal-webcam"><input type="number" id="modal-cam-index" class="modal-input" placeholder="Camera index (0, 1, 2...)" value="0" min="0"><input type="text" id="modal-cam-label-webcam" class="modal-input" placeholder="Label (e.g. Zone A)"></div>
+        <div id="modal-rtsp" class="hidden"><input type="text" id="modal-rtsp-url" class="modal-input" placeholder="rtsp://... or http://..."><input type="text" id="modal-cam-label-rtsp" class="modal-input" placeholder="Label (e.g. Gate Camera)"></div>
+        <div class="modal-row"><button class="modal-btn modal-btn-cancel" onclick="closeAddModal()">Cancel</button><button class="modal-btn modal-btn-primary" onclick="addCamera()">Add Camera</button></div>
+    </div>
+</div>
 
-            document.getElementById(type + '-warn-val').textContent = warn.toFixed(2);
-            document.getElementById(type + '-ok-val').textContent   = ok.toFixed(2);
+<!-- Zone Modal -->
+<div id="zone-modal" class="zone-modal hidden">
+    <div class="zone-topbar">
+        <div class="zone-topbar-title">
+            <span>Zone Definition</span>
+            <span class="zone-hint" id="zone-hint">Click to place points · Click first point to close · Right-click to undo</span>
+        </div>
+        <div class="zone-actions">
+            <button onclick="clearZonePoints()" class="btn-secondary">Clear</button>
+            <button onclick="deleteZone()" class="btn-secondary danger" id="btn-delete-zone" style="display:none;">Delete Zone</button>
+            <button onclick="saveZone()" class="btn-primary" style="width:auto;padding:8px 20px;">Save Zone</button>
+            <button onclick="closeZoneEditor()" class="btn-secondary" style="margin-left:4px;">Cancel</button>
+        </div>
+    </div>
+    <div class="zone-canvas-wrap" id="zone-canvas-wrap">
+        <img id="zone-frozen-img" class="zone-frozen-img" src="" alt="">
+        <canvas id="zone-canvas" class="zone-canvas"></canvas>
+    </div>
+</div>
 
-            // Update gradient fill
-            const min   = 0.05, max = 0.90;
-            const warnP = ((warn - min) / (max - min)) * 100;
-            const okP   = ((ok   - min) / (max - min)) * 100;
-            document.getElementById(type + '-fill').style.background =
-                `linear-gradient(to right,
-                    #f85149 0%, #f85149 ${warnP}%,
-                    #f59e0b ${warnP}%, #f59e0b ${okP}%,
-                    #3fb950 ${okP}%, #3fb950 100%)`;
+<!-- Lightbox -->
+<div id="lightbox" class="lightbox hidden" onclick="handleLightboxBackdropClick(event)">
+    <div class="lightbox-backdrop"></div>
+    <div class="lightbox-panel">
+        <div class="lightbox-header"><div class="lightbox-title">Violation Detail <span class="lb-id" id="lb-id">ID —</span><span class="lb-id" id="lb-time-header" style="color:var(--text-muted);"></span></div><button class="lightbox-close" onclick="closeLightbox()"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>
+        <div class="lightbox-image-wrap"><img id="lb-img" src="" alt="Violation"></div>
+        <div class="lightbox-footer"><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);">Missing PPE</span><div class="lightbox-tags" id="lb-tags"></div></div>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+let isStreaming = false, viewMode = 'grid', focusedCamId = null;
+let activeCameras = {}, modalTab = 'webcam', isCamMode = false;
+
+function switchTab(tabId) {
+    ['live-tab','log-tab','dashboard-tab'].forEach(t=>document.getElementById(t).classList.add('hidden'));
+    ['nav-live','nav-log','nav-dashboard'].forEach(n=>document.getElementById(n).className='nav-item');
+    document.getElementById(tabId).classList.remove('hidden');
+    const m={'live-tab':'nav-live','log-tab':'nav-log','dashboard-tab':'nav-dashboard'};
+    document.getElementById(m[tabId]).className='nav-item active';
+    const la=document.getElementById('log-actions'), vt=document.getElementById('view-toggle');
+    if (tabId==='live-tab') { la.style.display='none'; vt.style.display=isStreaming?'flex':'none'; document.getElementById('topbar-title-text').textContent='Live Inference'; document.getElementById('topbar-sub-text').textContent=`${Object.keys(activeCameras).length} cameras active`; }
+    else if (tabId==='log-tab') { la.style.display='flex'; vt.style.display='none'; document.getElementById('topbar-title-text').textContent='Violation Registry'; document.getElementById('topbar-sub-text').textContent='Supabase sync'; fetchViolations(); }
+    else { la.style.display='none'; vt.style.display='none'; document.getElementById('topbar-title-text').textContent='Analytics Dashboard'; document.getElementById('topbar-sub-text').textContent='Last 200 records'; fetchStats(); }
+}
+
+function renderGrid() {
+    const grid=document.getElementById('camera-grid');
+    const ids=Object.keys(activeCameras);
+    if (ids.length===0) { grid.innerHTML=''; grid.className='camera-grid grid-1'; const ph=document.createElement('div'); ph.className='camera-cell'; ph.id='empty-placeholder'; ph.innerHTML='<div class="camera-placeholder"><div class="camera-placeholder-text">No Cameras Active</div><div class="camera-placeholder-sub">Add a camera to begin</div></div>'; grid.appendChild(ph); return; }
+    const n=viewMode==='single'?1:ids.length;
+    grid.className=`camera-grid ${n<=1?'grid-1':n===2?'grid-2':'grid-4'}`;
+    const toShow=viewMode==='single'&&focusedCamId?[focusedCamId]:ids;
+    Array.from(grid.querySelectorAll('.camera-cell')).forEach(c=>{ if (!toShow.includes(c.dataset.camId)) c.remove(); });
+    toShow.forEach(camId=>{
+        const cam=activeCameras[camId]; if (!cam) return;
+        let cell=grid.querySelector(`[data-cam-id="${camId}"]`);
+        if (!cell) {
+            cell=document.createElement('div'); cell.className='camera-cell'; cell.dataset.camId=camId;
+            const img=document.createElement('img'); img.src=`/video_feed/${camId}`; img.alt=cam.label; cell.appendChild(img); cam.imgEl=img;
+            const zb=document.createElement('button'); zb.className='zone-btn'+(cam.hasZone?' has-zone':''); zb.id=`zone-btn-${camId}`; zb.textContent=cam.hasZone?'◉ ZONE':'+ ZONE';
+            zb.onclick=(e)=>{e.stopPropagation();openZoneEditor(camId);}; cell.appendChild(zb);
+            const ov=document.createElement('div'); ov.className='camera-cell-overlay'; ov.innerHTML=`<span class="camera-cell-label">${cam.label}</span><button class="camera-cell-remove" onclick="removeCamera('${camId}',event)">✕</button>`; cell.appendChild(ov);
+            cell.addEventListener('click',()=>focusCamera(camId)); grid.appendChild(cell);
         }
+    });
+}
 
-        async function applyThresholds() {
-            const hardhat_ok   = document.getElementById('hardhat-ok').value;
-            const hardhat_warn = document.getElementById('hardhat-warn').value;
-            const vest_ok      = document.getElementById('vest-ok').value;
-            const vest_warn    = document.getElementById('vest-warn').value;
-            try {
-                const response = await fetch(
-                    `/api/thresholds?hardhat_ok=${hardhat_ok}&hardhat_warn=${hardhat_warn}&vest_ok=${vest_ok}&vest_warn=${vest_warn}`,
-                    { method: 'POST' }
-                );
-                const result = await response.json();
-                if (result.status === 'success') {
-                    showToast(`Thresholds — Hardhat: warn ${parseFloat(hardhat_warn).toFixed(2)} ok ${parseFloat(hardhat_ok).toFixed(2)} | Vest: warn ${parseFloat(vest_warn).toFixed(2)} ok ${parseFloat(vest_ok).toFixed(2)}`, 'success');
-                }
-            } catch { showToast('Failed to update thresholds', 'error'); }
+function focusCamera(camId) { if (viewMode!=='single') return; focusedCamId=camId; document.querySelectorAll('.camera-cell').forEach(c=>c.classList.toggle('focused',c.dataset.camId===camId)); }
+function setViewMode(mode) { viewMode=mode; document.getElementById('btn-grid').classList.toggle('active',mode==='grid'); document.getElementById('btn-single').classList.toggle('active',mode==='single'); if (mode==='single'&&!focusedCamId) focusedCamId=Object.keys(activeCameras)[0]||null; renderGrid(); }
+
+function openAddModal() { document.getElementById('add-modal').classList.remove('hidden'); }
+function closeAddModal() { document.getElementById('add-modal').classList.add('hidden'); }
+function switchModalTab(tab) { modalTab=tab; document.getElementById('modal-webcam').classList.toggle('hidden',tab!=='webcam'); document.getElementById('modal-rtsp').classList.toggle('hidden',tab!=='rtsp'); document.getElementById('tab-webcam').classList.toggle('active',tab==='webcam'); document.getElementById('tab-rtsp').classList.toggle('active',tab==='rtsp'); }
+
+async function addCamera() {
+    let url;
+    if (modalTab==='webcam') { const idx=document.getElementById('modal-cam-index').value||'0'; const lbl=document.getElementById('modal-cam-label-webcam').value; url=`/api/cameras/add_webcam?camera_index=${idx}&label=${encodeURIComponent(lbl)}`; }
+    else { const rtsp=document.getElementById('modal-rtsp-url').value.trim(); if (!rtsp){showToast('Enter URL','error');return;} const lbl=document.getElementById('modal-cam-label-rtsp').value; url=`/api/cameras/add_rtsp?url=${encodeURIComponent(rtsp)}&label=${encodeURIComponent(lbl)}`; }
+    try {
+        const res=await fetch(url,{method:'POST'}); const data=await res.json();
+        if (data.status==='success') { activeCameras[data.cam_id]={label:data.label,imgEl:null,hasZone:false}; if (!focusedCamId) focusedCamId=data.cam_id; closeAddModal(); renderGrid(); renderCameraList(); updateStreamStatus(); showToast(`${data.label} added`,'success'); if (!isStreaming) startStreaming(); }
+        else showToast(data.message||'Failed','error');
+    } catch(e){showToast('Network error','error');}
+}
+
+async function removeCamera(camId,event) {
+    if (event) event.stopPropagation();
+    await fetch(`/api/cameras/${camId}`,{method:'DELETE'});
+    delete activeCameras[camId];
+    if (focusedCamId===camId) focusedCamId=Object.keys(activeCameras)[0]||null;
+    renderGrid(); renderCameraList(); updateStreamStatus(); showToast('Camera removed','success');
+}
+
+function renderCameraList() {
+    const list=document.getElementById('camera-list'), ids=Object.keys(activeCameras);
+    if (!ids.length){list.innerHTML='<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:12px 0;">No cameras added yet</div>';return;}
+    list.innerHTML='';
+    ids.forEach(camId=>{const cam=activeCameras[camId]; const item=document.createElement('div'); item.className='camera-item'; item.innerHTML=`<div class="camera-item-dot"></div><div style="flex:1;min-width:0;"><div class="camera-item-label">${cam.label}</div><div class="camera-item-id">${camId}</div></div><button class="camera-item-remove" onclick="removeCamera('${camId}')">✕</button>`; list.appendChild(item);});
+}
+
+function startStreaming() {
+    isStreaming=true;
+    document.getElementById('btn-stream').textContent='Stop All Cameras'; document.getElementById('btn-stream').classList.add('btn-danger-bg');
+    document.getElementById('stream-status-badge').textContent='LIVE'; document.getElementById('stream-status-badge').className='status-badge live';
+    document.querySelector('.status-dot').classList.add('live');
+    document.getElementById('view-toggle').style.display='flex'; updateStreamStatus(); startPolling();
+}
+
+function stopStreaming() {
+    isStreaming=false;
+    document.querySelectorAll('.camera-cell img').forEach(img=>{img.src='';});
+    document.getElementById('btn-stream').textContent='Start All Cameras'; document.getElementById('btn-stream').classList.remove('btn-danger-bg');
+    document.getElementById('stream-status-badge').textContent='OFFLINE'; document.getElementById('stream-status-badge').className='status-badge';
+    document.querySelector('.status-dot').classList.remove('live');
+    document.getElementById('view-toggle').style.display='none'; stopPolling();
+}
+
+function toggleAllStreams() {
+    if (isStreaming) { stopStreaming(); }
+    else {
+        if (!Object.keys(activeCameras).length){showToast('Add a camera first','error');return;}
+        Object.keys(activeCameras).forEach(camId=>{const img=document.querySelector(`[data-cam-id="${camId}"] img`); if(img) img.src=`/video_feed/${camId}`;});
+        startStreaming();
+    }
+}
+
+function updateStreamStatus() { const n=Object.keys(activeCameras).length; document.getElementById('topbar-sub-text').textContent=`${n} camera${n!==1?'s':''} active`; }
+
+async function uploadVideoFile() {
+    const file=document.getElementById('video-upload').files[0]; if(!file) return;
+    document.getElementById('file-name').textContent=file.name;
+    const fd=new FormData(); fd.append('video_file',file);
+    const res=await fetch('/upload_video',{method:'POST',body:fd}); const data=await res.json();
+    if(data.status==='success'){await syncCamerasFromBackend();showToast(data.message,'success');if(!isStreaming)startStreaming();}
+    else showToast('Upload failed.','error');
+}
+
+async function syncCamerasFromBackend() {
+    try { const res=await fetch('/api/cameras'); const data=await res.json(); (data.cameras||[]).forEach(cam=>{if(!activeCameras[cam.cam_id]){activeCameras[cam.cam_id]={label:cam.label,imgEl:null,hasZone:false};if(!focusedCamId)focusedCamId=cam.cam_id;}}); renderGrid(); renderCameraList(); } catch(e){}
+}
+
+async function toggleCamMode() {
+    const btn=document.getElementById('btn-cam'); isCamMode=!isCamMode;
+    await fetch(`/api/cam_mode?enabled=${isCamMode}`,{method:'POST'});
+    if(isCamMode){btn.style.borderColor='#f59e0b';btn.style.color='#f59e0b';btn.style.background='rgba(245,158,11,0.1)';showToast('CAM Overlay ON','success');}
+    else{btn.style.borderColor='';btn.style.color='';btn.style.background='';showToast('CAM Overlay OFF','success');}
+}
+
+function onDualSlider(type) {
+    const we=document.getElementById(type+'-warn'), oe=document.getElementById(type+'-ok');
+    let w=parseFloat(we.value), o=parseFloat(oe.value);
+    if(w>=o){if(document.activeElement===we){w=o-0.05;we.value=w;}else{o=w+0.05;oe.value=o;}}
+    document.getElementById(type+'-warn-val').textContent=w.toFixed(2); document.getElementById(type+'-ok-val').textContent=o.toFixed(2);
+    const min=0.05,max=0.90,wp=((w-min)/(max-min))*100,op=((o-min)/(max-min))*100;
+    document.getElementById(type+'-fill').style.background=`linear-gradient(to right,#f85149 0%,#f85149 ${wp}%,#f59e0b ${wp}%,#f59e0b ${op}%,#3fb950 ${op}%,#3fb950 100%)`;
+}
+
+async function applyThresholds() {
+    const ho=document.getElementById('hardhat-ok').value, hw=document.getElementById('hardhat-warn').value, vo=document.getElementById('vest-ok').value, vw=document.getElementById('vest-warn').value;
+    await fetch(`/api/thresholds?hardhat_ok=${ho}&hardhat_warn=${hw}&vest_ok=${vo}&vest_warn=${vw}`,{method:'POST'});
+    showToast('Thresholds updated','success');
+}
+
+// ---------------------------------------------------------------------------
+// Zone editor — clean rewrite
+// ---------------------------------------------------------------------------
+let zoneEditingCamId = null;
+let zonePoints = [];
+let zoneFrameW = 960;
+let zoneFrameH = 720;
+let zoneCanvasScale = 1;
+let zoneCanvasOffsetX = 0;
+let zoneCanvasOffsetY = 0;
+let zoneSnapshotUrl = null;
+
+function computeZoneViewport() {
+    const wrap = document.getElementById('zone-canvas-wrap');
+    const canvas = document.getElementById('zone-canvas');
+    const img = document.getElementById('zone-frozen-img');
+    if (!wrap || !canvas || !img) return;
+
+    const wrapW = Math.max(1, wrap.clientWidth);
+    const wrapH = Math.max(1, wrap.clientHeight);
+    canvas.width = wrapW;
+    canvas.height = wrapH;
+
+    zoneCanvasScale = Math.min(wrapW / zoneFrameW, wrapH / zoneFrameH);
+    const renderW = zoneFrameW * zoneCanvasScale;
+    const renderH = zoneFrameH * zoneCanvasScale;
+    zoneCanvasOffsetX = (wrapW - renderW) / 2;
+    zoneCanvasOffsetY = (wrapH - renderH) / 2;
+
+    img.style.left = `${zoneCanvasOffsetX}px`;
+    img.style.top = `${zoneCanvasOffsetY}px`;
+    img.style.width = `${renderW}px`;
+    img.style.height = `${renderH}px`;
+}
+
+function frameToCanvasPoint(p) {
+    return {
+        x: zoneCanvasOffsetX + (p.x * zoneCanvasScale),
+        y: zoneCanvasOffsetY + (p.y * zoneCanvasScale),
+    };
+}
+
+function canvasToFramePoint(x, y) {
+    return {
+        x: (x - zoneCanvasOffsetX) / zoneCanvasScale,
+        y: (y - zoneCanvasOffsetY) / zoneCanvasScale,
+    };
+}
+
+function isInsideZoneImage(x, y) {
+    return (
+        x >= zoneCanvasOffsetX &&
+        y >= zoneCanvasOffsetY &&
+        x <= zoneCanvasOffsetX + zoneFrameW * zoneCanvasScale &&
+        y <= zoneCanvasOffsetY + zoneFrameH * zoneCanvasScale
+    );
+}
+
+async function openZoneEditor(camId) {
+    zoneEditingCamId = camId;
+    zonePoints = [];
+
+    // Fetch snapshot
+    const snapRes = await fetch(`/snapshot/${camId}?t=${Date.now()}`);
+    if (!snapRes.ok) { showToast('Failed to get snapshot', 'error'); return; }
+
+    zoneFrameW = parseInt(snapRes.headers.get('X-Frame-Width') || '960');
+    zoneFrameH = parseInt(snapRes.headers.get('X-Frame-Height') || '720');
+    const blob = await snapRes.blob();
+    if (zoneSnapshotUrl) URL.revokeObjectURL(zoneSnapshotUrl);
+    zoneSnapshotUrl = URL.createObjectURL(blob);
+
+    // Pause inference
+    await fetch(`/api/cameras/${camId}/pause`, { method: 'POST' });
+
+    // Set frozen image
+    const img = document.getElementById('zone-frozen-img');
+    img.src = zoneSnapshotUrl;
+
+    // Show modal
+    document.getElementById('zone-modal').classList.remove('hidden');
+    const cam = activeCameras[camId];
+    document.getElementById('btn-delete-zone').style.display = cam?.hasZone ? 'flex' : 'none';
+    document.getElementById('zone-hint').textContent = 'Click to place points · Click first point to close · Right-click to undo';
+
+    computeZoneViewport();
+
+    // Bind canvas events
+    const canvas = document.getElementById('zone-canvas');
+    canvas.onclick = onZoneClick;
+    canvas.oncontextmenu = (e) => { e.preventDefault(); undoLastPoint(); };
+
+    drawZoneCanvas();
+
+    // Load existing zone
+    try {
+        const res = await fetch(`/api/cameras/${camId}/zone`);
+        const data = await res.json();
+        if (data.zone && data.zone.length >= 3) {
+            zonePoints = data.zone.map(([x, y]) => ({ x, y }));
+            drawZoneCanvas();
         }
+    } catch(e) {}
+}
 
-        // Init fill on load
-        window.addEventListener('DOMContentLoaded', () => {
-            onDualSlider('hardhat');
-            onDualSlider('vest');
+function onZoneClick(e) {
+    const canvas = document.getElementById('zone-canvas');
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top)  * (canvas.height / rect.height);
+
+    if (!isInsideZoneImage(x, y)) return;
+    const fp = canvasToFramePoint(x, y);
+    const clampedX = Math.max(0, Math.min(zoneFrameW, fp.x));
+    const clampedY = Math.max(0, Math.min(zoneFrameH, fp.y));
+
+    if (zonePoints.length >= 3) {
+        const dx = clampedX - zonePoints[0].x;
+        const dy = clampedY - zonePoints[0].y;
+        if (Math.sqrt(dx*dx + dy*dy) < (18 / zoneCanvasScale)) {
+            drawZoneCanvas(true);
+            document.getElementById('zone-hint').textContent = 'Polygon closed · Click Save to apply';
+            return;
+        }
+    }
+    zonePoints.push({ x: clampedX, y: clampedY });
+    drawZoneCanvas();
+    document.getElementById('zone-hint').textContent = `${zonePoints.length} point${zonePoints.length>1?'s':''} · Click first point to close · Right-click to undo`;
+}
+
+function undoLastPoint() { if (zonePoints.length>0){zonePoints.pop();drawZoneCanvas();} }
+function clearZonePoints() { zonePoints=[]; drawZoneCanvas(); document.getElementById('zone-hint').textContent='Click to place points · Click first point to close · Right-click to undo'; }
+
+function drawZoneCanvas(closed=false) {
+    const canvas=document.getElementById('zone-canvas'), ctx=canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if (!zonePoints.length) return;
+    const points = zonePoints.map(frameToCanvasPoint);
+    if (points.length>=3){ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);points.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.closePath();ctx.fillStyle='rgba(56,139,253,0.18)';ctx.fill();}
+    ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);points.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));
+    if(closed)ctx.closePath();
+    ctx.strokeStyle='#388bfd';ctx.lineWidth=2;ctx.setLineDash(closed?[]:[6,3]);ctx.stroke();ctx.setLineDash([]);
+    points.forEach((p,i)=>{ctx.beginPath();ctx.arc(p.x,p.y,i===0?7:5,0,Math.PI*2);ctx.fillStyle=i===0?'#388bfd':'#fff';ctx.strokeStyle='#388bfd';ctx.lineWidth=2;ctx.fill();ctx.stroke();});
+}
+
+async function saveZone() {
+    if (zonePoints.length<3){showToast('Need at least 3 points','error');return;}
+    const points = zonePoints.map(p=>[Math.round(p.x),Math.round(p.y)]);
+    const res = await fetch(`/api/cameras/${zoneEditingCamId}/zone`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(points)});
+    const data = await res.json();
+    if (data.status==='ok') {
+        if(activeCameras[zoneEditingCamId]) activeCameras[zoneEditingCamId].hasZone=true;
+        const btn=document.getElementById(`zone-btn-${zoneEditingCamId}`);
+        if(btn){btn.textContent='◉ ZONE';btn.classList.add('has-zone');}
+        showToast('Zone saved','success');
+        closeZoneEditor();
+    } else showToast('Failed to save zone','error');
+}
+
+async function deleteZone() {
+    if (!confirm('Delete zone?')) return;
+    await fetch(`/api/cameras/${zoneEditingCamId}/zone`,{method:'DELETE'});
+    if(activeCameras[zoneEditingCamId]) activeCameras[zoneEditingCamId].hasZone=false;
+    const btn=document.getElementById(`zone-btn-${zoneEditingCamId}`);
+    if(btn){btn.textContent='+ ZONE';btn.classList.remove('has-zone');}
+    showToast('Zone deleted','success');
+    closeZoneEditor();
+}
+
+async function closeZoneEditor() {
+    if (zoneEditingCamId) {
+        await fetch(`/api/cameras/${zoneEditingCamId}/resume`,{method:'POST'});
+        // Re-attach stream img src
+        const img = document.querySelector(`[data-cam-id="${zoneEditingCamId}"] img`);
+        if (img) img.src = `/video_feed/${zoneEditingCamId}?t=${Date.now()}`;
+    }
+    document.getElementById('zone-modal').classList.add('hidden');
+    if (zoneSnapshotUrl) {
+        URL.revokeObjectURL(zoneSnapshotUrl);
+        zoneSnapshotUrl = null;
+    }
+    zoneEditingCamId=null; zonePoints=[];
+}
+
+window.addEventListener('resize', () => {
+    if (!zoneEditingCamId) return;
+    computeZoneViewport();
+    drawZoneCanvas();
+});
+
+// ---------------------------------------------------------------------------
+// Violations
+// ---------------------------------------------------------------------------
+async function fetchViolations() {
+    const grid=document.getElementById('violations-grid');
+    grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Fetching…</div>';
+    try {
+        const res=await fetch('/api/violations'); const data=(await res.json()).data;
+        if(!data||!data.length){grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">No records found.</div>';return;}
+        grid.innerHTML='';
+        data.forEach(item=>{
+            const v=item.violations[0]||{}, imgPath=v.image_path?'/'+v.image_path:'';
+            const timeStr=new Date(item.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+            const card=document.createElement('div'); card.className='violation-card';
+            const imgDiv=document.createElement('div'); imgDiv.className='card-image';
+            if(imgPath){const img=document.createElement('img');img.src=imgPath;img.alt='Violation';img.addEventListener('error',()=>{imgDiv.innerHTML='<span style="font-size:11px;color:var(--text-muted)">Image not found</span>';});imgDiv.appendChild(img);}
+            const badge=document.createElement('div');badge.className='card-id-badge';badge.textContent='ID '+(v.tracker_id!=null?v.tracker_id:'—');imgDiv.appendChild(badge);
+            const body=document.createElement('div');body.className='card-body';
+            const meta=document.createElement('div');meta.className='card-meta';meta.innerHTML=`<span class="card-time">${timeStr}</span><span class="card-status">${item.status}</span>`;
+            const lbl=document.createElement('div');lbl.className='card-violations-label';lbl.textContent='Missing PPE';
+            const tags=document.createElement('div');tags.className='violation-tags';
+            item.violations.forEach(vv=>{const tag=document.createElement('span');tag.className='vtag';tag.textContent=vv.violation_type.replace('none_','').toUpperCase();tags.appendChild(tag);});
+            body.appendChild(meta);body.appendChild(lbl);body.appendChild(tags);
+            card.addEventListener('click',()=>openLightbox(imgPath,v.tracker_id,timeStr,item.violations));
+            card.appendChild(imgDiv);card.appendChild(body);grid.appendChild(card);
         });
-        let isWebcam = false;
+    } catch { grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Failed to connect.</div>'; }
+}
 
-        async function toggleWebcam() {
-            const btn = document.getElementById("btn-webcam");
-            if (!isWebcam) {
-                const cameraIndex = document.getElementById("camera-select").value;
-                const response = await fetch(`/start_webcam?camera_index=${cameraIndex}`, { method: "POST" });
-                const result = await response.json();
-                if (result.status === "success") {
-                    isWebcam = true;
-                    btn.textContent = "Stop Webcam";
-                    btn.style.borderColor = "var(--danger)";
-                    btn.style.color = "var(--danger)";
-                    document.getElementById("file-name").textContent = `webcam:${cameraIndex}`;
-                    showToast(`Webcam ${cameraIndex} started`, "success");
-                    if (!isStreaming) toggleStream();
-                }
-            } else {
-                const response = await fetch("/stop_webcam", { method: "POST" });
-                const result = await response.json();
-                if (result.status === "success") {
-                    isWebcam = false;
-                    btn.textContent = "Use Webcam";
-                    btn.style.borderColor = "";
-                    btn.style.color = "";
-                    document.getElementById("file-name").textContent = "No file selected";
-                    showToast("Webcam stopped", "success");
-                }
-            }
-        }
+async function flushImages() {
+    if(!confirm('Delete all local violation images?'))return;
+    const res=await fetch('/api/flush',{method:'POST'}); const d=await res.json();
+    if(d.status==='success'){showToast(d.message,'success');fetchViolations();}else showToast('Flush failed.','error');
+}
 
-        function switchTab(tabId) {
-            ['live-tab','log-tab','dashboard-tab'].forEach(t => document.getElementById(t).classList.add('hidden'));
-            ['nav-live','nav-log','nav-dashboard'].forEach(n => document.getElementById(n).className = 'nav-item');
-            document.getElementById(tabId).classList.remove('hidden');
-            const navMap = {'live-tab':'nav-live','log-tab':'nav-log','dashboard-tab':'nav-dashboard'};
-            document.getElementById(navMap[tabId]).className = 'nav-item active';
+// ---------------------------------------------------------------------------
+// Analytics
+// ---------------------------------------------------------------------------
+async function fetchStats() {
+    try {
+        const ss=document.getElementById('session-select');
+        if(ss.options.length<=1){const r=await fetch('/api/sessions');const d=await r.json();(d.sessions||[]).forEach(s=>{const o=document.createElement('option');o.value=s.id;const dt=new Date(s.created_at).toLocaleString([],{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});o.textContent=`${s.id} (${dt})`;ss.appendChild(o);});}
+        const sid=ss.value; const res=await fetch(sid?`/api/stats?session_id=${sid}`:'/api/stats'); const data=await res.json();
+        const total=data.total||0,hardhat=data.none_hardhat||0,vest=data.none_vest||0;
+        document.getElementById('stat-total').textContent=total; document.getElementById('stat-hardhat').textContent=hardhat; document.getElementById('stat-vest').textContent=vest;
+        const hourly=data.hourly||{}, peakH=Object.keys(hourly).reduce((a,b)=>hourly[a]>hourly[b]?a:b,Object.keys(hourly)[0]);
+        if(peakH!==undefined){document.getElementById('stat-peak').textContent=String(peakH).padStart(2,'0')+':00';document.getElementById('peak-label').textContent=`Peak: ${String(peakH).padStart(2,'0')}:00`;}
+        if(data.top_offenders?.length) document.getElementById('stat-top-id').textContent='ID '+data.top_offenders[0].id;
+        const chart=document.getElementById('hourly-chart');chart.innerHTML='';
+        const maxVal=Math.max(...Array.from({length:24},(_,h)=>hourly[h]||0),1);
+        for(let h=0;h<24;h++){const val=hourly[h]||0,pct=(val/maxVal)*100,isPeak=String(h)===String(peakH);const bar=document.createElement('div');bar.title=`${String(h).padStart(2,'0')}:00 — ${val}`;bar.style.cssText=`flex:1;height:${Math.max(pct,2)}%;background:${isPeak?'#f59e0b':val>0?'var(--danger)':'var(--surface-3)'};border-radius:2px 2px 0 0;opacity:${val>0?0.75:0.3};cursor:default;transition:opacity 0.15s;`;bar.addEventListener('mouseenter',()=>bar.style.opacity='1');bar.addEventListener('mouseleave',()=>bar.style.opacity=val>0?'0.75':'0.3');chart.appendChild(bar);}
+        const tv=hardhat+vest||1,hP=hardhat/tv,vP=vest/tv,circ=2*Math.PI*45,hL=hP*circ,vL=vP*circ;
+        document.getElementById('donut-hardhat').setAttribute('stroke-dasharray',`${hL} ${circ-hL}`);document.getElementById('donut-hardhat').setAttribute('stroke-dashoffset','0');
+        document.getElementById('donut-vest').setAttribute('stroke-dasharray',`${vL} ${circ-vL}`);document.getElementById('donut-vest').setAttribute('stroke-dashoffset',String(-hL));
+        document.getElementById('donut-hardhat-pct').textContent=Math.round(hP*100)+'%';document.getElementById('donut-vest-pct').textContent=Math.round(vP*100)+'%';
+        const offEl=document.getElementById('top-offenders');offEl.innerHTML='';const mc=data.top_offenders?.[0]?.count||1;
+        (data.top_offenders||[]).forEach(o=>{const pct=(o.count/mc)*100,row=document.createElement('div');row.className='offender-row';row.innerHTML=`<span class="offender-id">ID ${o.id}</span><div class="offender-bar-wrap"><div class="offender-bar" style="width:${pct}%"></div></div><span class="offender-count">${o.count}</span>`;offEl.appendChild(row);});
+    } catch(e){console.error(e);}
+}
 
-            const logActions = document.getElementById('log-actions');
-            if (tabId === 'live-tab') {
-                logActions.style.display = 'none';
-                document.getElementById('topbar-title-text').textContent = 'Live Inference — Zone A';
-                document.getElementById('topbar-sub-text').textContent = 'Monitor active';
-            } else if (tabId === 'log-tab') {
-                logActions.style.display = 'flex';
-                document.getElementById('topbar-title-text').textContent = 'Violation Registry';
-                document.getElementById('topbar-sub-text').textContent = 'Supabase sync';
-                fetchViolations();
-            } else {
-                logActions.style.display = 'none';
-                document.getElementById('topbar-title-text').textContent = 'Analytics Dashboard';
-                document.getElementById('topbar-sub-text').textContent = 'Last 200 records';
-                fetchStats();
-            }
-        }
+// ---------------------------------------------------------------------------
+// Lightbox
+// ---------------------------------------------------------------------------
+function openLightbox(imgPath,trackerId,timeStr,violations) {
+    document.getElementById('lb-id').textContent='ID '+(trackerId!=null?trackerId:'—');document.getElementById('lb-time-header').textContent=timeStr;
+    const imgEl=document.getElementById('lb-img');if(imgPath){imgEl.src=imgPath;imgEl.style.display='';}else{imgEl.src='';imgEl.style.display='none';}
+    const tagsEl=document.getElementById('lb-tags');tagsEl.innerHTML='';violations.forEach(v=>{const tag=document.createElement('span');tag.className='vtag';tag.textContent=v.violation_type.replace('none_','').toUpperCase();tagsEl.appendChild(tag);});
+    document.getElementById('lightbox').classList.remove('hidden');document.body.style.overflow='hidden';
+}
+function closeLightbox(){document.getElementById('lightbox').classList.add('hidden');document.body.style.overflow='';}
+function handleLightboxBackdropClick(e){if(e.target===document.getElementById('lightbox')||e.target.classList.contains('lightbox-backdrop'))closeLightbox();}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeLightbox();closeZoneEditor();}});
 
-        async function fetchStats() {
-            try {
-                // Load sessions into dropdown if empty
-                const sessionSelect = document.getElementById('session-select');
-                if (sessionSelect.options.length <= 1) {
-                    const sRes  = await fetch('/api/sessions');
-                    const sData = await sRes.json();
-                    (sData.sessions || []).forEach(s => {
-                        const opt   = document.createElement('option');
-                        opt.value   = s.id;
-                        const dt    = new Date(s.created_at).toLocaleString([], {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
-                        opt.textContent = `${s.id} (${dt})`;
-                        sessionSelect.appendChild(opt);
-                    });
-                }
+// ---------------------------------------------------------------------------
+// Toast & polling
+// ---------------------------------------------------------------------------
+function showToast(msg,type){const c=document.getElementById('toast-container'),t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;c.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},3500);}
 
-                const sessionId = sessionSelect.value;
-                const url = sessionId ? `/api/stats?session_id=${sessionId}` : '/api/stats';
-                const res  = await fetch(url);
-                const data = await res.json();
+let lastViolationId=null,pollInterval=null;
+function startPolling(){if(pollInterval)return;pollInterval=setInterval(async()=>{if(!isStreaming)return;try{const res=await fetch('/api/violations'),data=await res.json(),rows=data.data||[];if(!rows.length)return;const latest=rows[0];if(lastViolationId===null){lastViolationId=latest.id;return;}if(latest.id!==lastViolationId){rows.filter(r=>r.id!==lastViolationId).slice(0,3).forEach(row=>{const v=row.violations?.[0]||{};const types=(row.violations||[]).map(x=>x.violation_type.replace('none_','').toUpperCase()).join(', ');const time=new Date(row.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});const c=document.getElementById('toast-container'),t=document.createElement('div');t.className='toast violation';t.innerHTML=`<div class="vio-title">🚨 PPE Violation</div><div class="vio-detail">ID ${v.tracker_id??'—'} | ${types}</div><div class="vio-detail">${time}</div>`;c.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},6000);});lastViolationId=latest.id;}}catch(e){}},5000);}
+function stopPolling(){if(pollInterval){clearInterval(pollInterval);pollInterval=null;}lastViolationId=null;}
 
-                const total   = data.total        || 0;
-                const hardhat = data.none_hardhat || 0;
-                const vest    = data.none_vest    || 0;
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+window.addEventListener('DOMContentLoaded',()=>{
+    onDualSlider('hardhat');onDualSlider('vest');
+    syncCamerasFromBackend();
+});
 
-                document.getElementById('stat-total').textContent   = total;
-                document.getElementById('stat-hardhat').textContent = hardhat;
-                document.getElementById('stat-vest').textContent    = vest;
-
-                // Peak hour
-                const hourly = data.hourly || {};
-                const peakH  = Object.keys(hourly).reduce((a,b) => hourly[a]>hourly[b]?a:b, Object.keys(hourly)[0]);
-                if (peakH !== undefined) {
-                    document.getElementById('stat-peak').textContent  = String(peakH).padStart(2,'0') + ':00';
-                    document.getElementById('peak-label').textContent = `Peak: ${String(peakH).padStart(2,'0')}:00`;
-                }
-
-                // Top offender ID
-                if (data.top_offenders?.length) {
-                    document.getElementById('stat-top-id').textContent = 'ID ' + data.top_offenders[0].id;
-                }
-
-                // Hourly bar chart
-                const chart  = document.getElementById('hourly-chart');
-                chart.innerHTML = '';
-                const maxVal = Math.max(...Array.from({length:24}, (_,h) => hourly[h] || 0), 1);
-                for (let h = 0; h < 24; h++) {
-                    const val    = hourly[h] || 0;
-                    const pct    = (val / maxVal) * 100;
-                    const isPeak = String(h) === String(peakH);
-                    const color  = isPeak ? '#f59e0b' : (val > 0 ? 'var(--danger)' : 'var(--surface-3)');
-                    const bar    = document.createElement('div');
-                    bar.title    = `${String(h).padStart(2,'0')}:00 — ${val} violations`;
-                    bar.style.cssText = `flex:1;height:${Math.max(pct,2)}%;background:${color};border-radius:2px 2px 0 0;opacity:${val>0?0.75:0.3};cursor:default;transition:opacity 0.15s;`;
-                    bar.addEventListener('mouseenter', () => bar.style.opacity='1');
-                    bar.addEventListener('mouseleave', () => bar.style.opacity = val>0?'0.75':'0.3');
-                    chart.appendChild(bar);
-                }
-
-                // Donut chart
-                const totalViol = hardhat + vest || 1;
-                const hPct = hardhat / totalViol;
-                const vPct = vest    / totalViol;
-                const circ = 2 * Math.PI * 45;
-                const hLen = hPct * circ;
-                const vLen = vPct * circ;
-                document.getElementById('donut-hardhat').setAttribute('stroke-dasharray', `${hLen} ${circ - hLen}`);
-                document.getElementById('donut-hardhat').setAttribute('stroke-dashoffset', '0');
-                document.getElementById('donut-vest').setAttribute('stroke-dasharray',    `${vLen} ${circ - vLen}`);
-                document.getElementById('donut-vest').setAttribute('stroke-dashoffset',   String(-hLen));
-                document.getElementById('donut-hardhat-pct').textContent = Math.round(hPct*100) + '%';
-                document.getElementById('donut-vest-pct').textContent    = Math.round(vPct*100) + '%';
-
-                // Top offenders
-                const offEl    = document.getElementById('top-offenders');
-                offEl.innerHTML = '';
-                const maxCount = data.top_offenders?.[0]?.count || 1;
-                (data.top_offenders || []).forEach(o => {
-                    const pct = (o.count / maxCount) * 100;
-                    const row = document.createElement('div');
-                    row.className = 'offender-row';
-                    row.innerHTML = `
-                        <span class="offender-id">ID ${o.id}</span>
-                        <div class="offender-bar-wrap"><div class="offender-bar" style="width:${pct}%"></div></div>
-                        <span class="offender-count">${o.count}</span>`;
-                    offEl.appendChild(row);
-                });
-            } catch(e) { console.error('fetchStats error:', e); }
-        }
-
-        function toggleStream() {
-            const videoEl     = document.getElementById('video-stream');
-            const placeholder = document.getElementById('offline-placeholder');
-            const btn         = document.getElementById('btn-stream');
-            const badge       = document.getElementById('stream-status-badge');
-            const dot         = document.querySelector('.status-dot');
-
-            isStreaming = !isStreaming;
-
-            if (isStreaming) {
-                videoEl.src = '/video_feed';
-                videoEl.classList.remove('hidden');
-                placeholder.classList.add('hidden');
-                btn.textContent = 'Stop Inference Engine';
-                btn.classList.add('btn-danger-bg');
-                badge.textContent = 'LIVE';
-                badge.className   = 'status-badge live';
-                dot.classList.add('live');
-                startPolling();
-            } else {
-                videoEl.src = '';
-                videoEl.classList.add('hidden');
-                placeholder.classList.remove('hidden');
-                btn.textContent = 'Start Inference Engine';
-                btn.classList.remove('btn-danger-bg');
-                badge.textContent = 'OFFLINE';
-                badge.className   = 'status-badge';
-                dot.classList.remove('live');
-                stopPolling();
-            }
-        }
-
-        async function uploadVideoFile() {
-            const fileInput = document.getElementById('video-upload');
-            const file = fileInput.files[0];
-            if (!file) return;
-            document.getElementById('file-name').textContent = file.name;
-            try {
-                const formData = new FormData();
-                formData.append('video_file', file);
-                const response = await fetch('/upload_video', { method: 'POST', body: formData });
-                const result   = await response.json();
-                if (result.status === 'success') {
-                    showToast(result.message, 'success');
-                    if (!isStreaming) toggleStream();
-                } else {
-                    showToast('Upload failed.', 'error');
-                }
-            } catch { showToast('Network error during upload.', 'error'); }
-        }
-
-        async function fetchViolations() {
-            const grid = document.getElementById('violations-grid');
-            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Fetching records\u2026</div>';
-            try {
-                const response = await fetch('/api/violations');
-                const result   = await response.json();
-                const data     = result.data;
-
-                if (!data || data.length === 0) {
-                    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">No records found.</div>';
-                    return;
-                }
-
-                grid.innerHTML = '';
-                data.forEach(item => {
-                    const v_data  = item.violations[0] || {};
-                    const imgPath = v_data.image_path ? '/' + v_data.image_path : '';
-                    const timeStr = new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-                    // Build card via DOM to avoid nested-quote escaping bugs
-                    const card = document.createElement('div');
-                    card.className = 'violation-card';
-
-                    // Image section
-                    const cardImage = document.createElement('div');
-                    cardImage.className = 'card-image';
-
-                    if (imgPath) {
-                        const img = document.createElement('img');
-                        img.src = imgPath;
-                        img.alt = 'Violation';
-                        img.addEventListener('error', function() {
-                            cardImage.innerHTML = '<span style="font-size:11px;color:var(--text-muted)">Image not found</span>';
-                        });
-                        cardImage.appendChild(img);
-                    } else {
-                        const placeholder = document.createElement('span');
-                        placeholder.style.cssText = 'font-size:11px;color:var(--text-muted)';
-                        placeholder.textContent = 'No image data';
-                        cardImage.appendChild(placeholder);
-                    }
-
-                    const idBadge = document.createElement('div');
-                    idBadge.className = 'card-id-badge';
-                    idBadge.textContent = 'ID ' + (v_data.tracker_id != null ? v_data.tracker_id : '—');
-                    cardImage.appendChild(idBadge);
-
-                    // Body section
-                    const cardBody = document.createElement('div');
-                    cardBody.className = 'card-body';
-
-                    const meta = document.createElement('div');
-                    meta.className = 'card-meta';
-                    meta.innerHTML = '<span class="card-time">' + timeStr + '</span><span class="card-status">' + item.status + '</span>';
-
-                    const label = document.createElement('div');
-                    label.className = 'card-violations-label';
-                    label.textContent = 'Missing PPE';
-
-                    const tagsDiv = document.createElement('div');
-                    tagsDiv.className = 'violation-tags';
-                    item.violations.forEach(v => {
-                        const tag = document.createElement('span');
-                        tag.className = 'vtag';
-                        tag.textContent = v.violation_type.replace('none_', '').toUpperCase();
-                        tagsDiv.appendChild(tag);
-                    });
-
-                    cardBody.appendChild(meta);
-                    cardBody.appendChild(label);
-                    cardBody.appendChild(tagsDiv);
-
-                    // Click to open lightbox
-                    card.addEventListener('click', function() {
-                        openLightbox(imgPath, v_data.tracker_id, timeStr, item.violations);
-                    });
-
-                    card.appendChild(cardImage);
-                    card.appendChild(cardBody);
-                    grid.appendChild(card);
-                });
-            } catch {
-                grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Failed to connect to API.</div>';
-            }
-        }
-
-        async function flushImages() {
-            if (!confirm('Delete all local violation images? This action cannot be undone.')) return;
-            try {
-                const response = await fetch('/api/flush', { method: 'POST' });
-                const result   = await response.json();
-                if (result.status === 'success') {
-                    showToast(result.message, 'success');
-                    fetchViolations();
-                } else {
-                    showToast('Flush operation failed.', 'error');
-                }
-            } catch { showToast('Network error.', 'error'); }
-        }
-
-        function openLightbox(imgPath, trackerId, timeStr, violations) {
-            document.getElementById('lb-id').textContent = 'ID ' + (trackerId != null ? trackerId : '—');
-            document.getElementById('lb-time-header').textContent = timeStr;
-
-            const imgEl = document.getElementById('lb-img');
-            if (imgPath) {
-                imgEl.src = imgPath;
-                imgEl.style.display = '';
-            } else {
-                imgEl.src = '';
-                imgEl.style.display = 'none';
-            }
-
-            const tagsEl = document.getElementById('lb-tags');
-            tagsEl.innerHTML = '';
-            violations.forEach(function(v) {
-                const tag = document.createElement('span');
-                tag.className = 'vtag';
-                tag.textContent = v.violation_type.replace('none_', '').toUpperCase();
-                tagsEl.appendChild(tag);
-            });
-
-            document.getElementById('lightbox').classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
-        }
-
-        function closeLightbox() {
-            document.getElementById('lightbox').classList.add('hidden');
-            document.body.style.overflow = '';
-        }
-
-        function handleLightboxBackdropClick(e) {
-            if (e.target === document.getElementById('lightbox') || e.target.classList.contains('lightbox-backdrop')) {
-                closeLightbox();
-            }
-        }
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') closeLightbox();
-        });
-
-        function showToast(message, type) {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = 'toast ' + (type || 'info');
-            toast.textContent = message;
-            container.appendChild(toast);
-            setTimeout(function() {
-                toast.style.opacity = '0';
-                setTimeout(function() { toast.remove(); }, 300);
-            }, 3500);
-        }
-
-        let isCamMode = false;
-
-        async function toggleCamMode() {
-            const btn = document.getElementById('btn-cam');
-            isCamMode = !isCamMode;
-            try {
-                await fetch(`/api/cam_mode?enabled=${isCamMode}`, { method: 'POST' });
-                if (isCamMode) {
-                    btn.style.borderColor = '#f59e0b';
-                    btn.style.color       = '#f59e0b';
-                    btn.style.background  = 'rgba(245,158,11,0.1)';
-                    showToast('CAM Overlay ON', 'success');
-                } else {
-                    btn.style.borderColor = '';
-                    btn.style.color       = '';
-                    btn.style.background  = '';
-                    showToast('CAM Overlay OFF', 'success');
-                }
-            } catch { showToast('Failed to toggle CAM mode', 'error'); }
-        }
-
-        function showViolationToast(violation) {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = 'toast violation';
-
-            const v     = violation.violations?.[0] || {};
-            const types = (violation.violations || [])
-                .map(x => x.violation_type.replace('none_', '').toUpperCase())
-                .join(', ');
-            const time  = new Date(violation.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-            const sid   = violation.session_id ? ` [${violation.session_id}]` : '';
-
-            toast.innerHTML = `
-                <div class="vio-title">🚨 PPE Violation${sid}</div>
-                <div class="vio-detail">ID ${v.tracker_id ?? '—'} &nbsp;|&nbsp; ${types}</div>
-                <div class="vio-detail">${time}</div>`;
-
-            container.appendChild(toast);
-            setTimeout(function() {
-                toast.style.opacity = '0';
-                setTimeout(function() { toast.remove(); }, 300);
-            }, 6000);
-        }
-
-        // Poll for new violations every 5s while streaming
-        let lastViolationId = null;
-        let pollInterval    = null;
-
-        function startPolling() {
-            if (pollInterval) return;
-            pollInterval = setInterval(async () => {
-                if (!isStreaming) return;
-                try {
-                    const res  = await fetch('/api/violations');
-                    const data = await res.json();
-                    const rows = data.data || [];
-                    if (!rows.length) return;
-
-                    const latest = rows[0];
-                    if (lastViolationId === null) {
-                        lastViolationId = latest.id;
-                        return;
-                    }
-                    if (latest.id !== lastViolationId) {
-                        // New violations since last poll
-                        const newRows = rows.filter(r => r.id !== lastViolationId);
-                        newRows.slice(0, 3).forEach(showViolationToast);
-                        lastViolationId = latest.id;
-                    }
-                } catch(e) {}
-            }, 5000);
-        }
-
-        function stopPolling() {
-            if (pollInterval) {
-                clearInterval(pollInterval);
-                pollInterval = null;
-            }
-            lastViolationId = null;
-        }
-    </script>
+async function syncCamerasFromBackend(){try{const res=await fetch('/api/cameras');const data=await res.json();(data.cameras||[]).forEach(cam=>{if(!activeCameras[cam.cam_id]){activeCameras[cam.cam_id]={label:cam.label,imgEl:null,hasZone:false};if(!focusedCamId)focusedCamId=cam.cam_id;}});renderGrid();renderCameraList();}catch(e){}}
+</script>
 </body>
 </html>
