@@ -10,7 +10,7 @@ PPE Vision is a real-time, cloud-native inference engine designed for autonomous
 
 ---
 
-## 1. System Architecture Overview
+## 1. System Architecture Overview 
 
 The platform is designed around a microservices architecture, exposing a scalable FastAPI application that integrates natively with MLflow for dynamic artifact retrieval and Supabase for unstructured event logging.
 
