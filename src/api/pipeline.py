@@ -22,7 +22,7 @@ def generate_frames():
         track_activation_threshold=0.20,
         lost_track_buffer=240,
         minimum_matching_threshold=0.8,
-        minimum_consecutive_frames=2,
+        minimum_consecutive_frames=2, 
     )
 
     last_tracked     = sv.Detections.empty()
