@@ -25,7 +25,7 @@ def get_supabase_client():
                 if "unexpected keyword argument 'proxy'" in str(e):
                     logger.error(
                         "Failed to initialize Supabase due to dependency mismatch. "
-                        "Pin httpx to a compatible version (for example: httpx==0.27.2) "
+                        "Pin httpx to a compatible version (for example: httpx==0.25.2) "
                         "and reinstall requirements."
                     )
                 logger.error(f"Failed to initialize Supabase: {e}")

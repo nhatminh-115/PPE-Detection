@@ -1,6 +1,6 @@
 ensemble-boxes
 fastapi
-httpx==0.27.2
+httpx==0.25.2
 jinja2
 lap
 matplotlib
