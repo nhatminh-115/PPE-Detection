@@ -14,7 +14,7 @@ PPE Vision is a real-time, cloud-native inference engine designed for autonomous
 
 The platform is designed around a microservices architecture, exposing a scalable FastAPI application that integrates natively with MLflow for dynamic artifact retrieval and Supabase for unstructured event logging.
 
-![PPE Vision Architecture](docs/PPE_Pipeline_3.png)
+![PPE Vision Architecture](docs/PPE_Pipeline_3_.png)
 
 ### 1.1 Core AI Pipeline
 
