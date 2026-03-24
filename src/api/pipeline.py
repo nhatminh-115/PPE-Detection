@@ -2,7 +2,7 @@ import time
 import logging
 import numpy as np
 import supervision as sv
-from src.api.app import app, model1, model2, model_stage2, device, executor
+from src.api.app import app, model1, model2, model_pose, model_stage2, device, executor
 from src.config import CONF_M1, CONF_M2, IOU_NMS, DETECT_EVERY, BOX_EMA_ALPHA
 from src.inference import (
     extract_boxes, fuse_boxes, WBF_AVAILABLE,
@@ -17,7 +17,7 @@ stream_state = StreamState()
 
 
 def generate_frames():
-    """Async frame generator maintaining core pipeline state."""
+    """Async frame generator with pose-guided PPE classification."""
     tracker = sv.ByteTrack(
         track_activation_threshold=0.20,
         lost_track_buffer=240,
@@ -29,9 +29,9 @@ def generate_frames():
     last_ppe_results = []
     ppe_ema, box_ema, ppe_state = {}, {}, {}
     violation_timer, last_seen_timer = {}, {}
-    frame_count  = 0
-    cap          = None
-    last_cam_frame = None  # cached frame with CAM overlay
+    frame_count    = 0
+    cap            = None
+    last_cam_frame = None
 
     while True:
         if cap is None or stream_state.trigger_restart:
@@ -68,6 +68,7 @@ def generate_frames():
         current_time = time.time()
 
         if frame_count % DETECT_EVERY == 0:
+            # Run detection + pose in parallel
             future1 = executor.submit(
                 model1.predict, frame,
                 conf=CONF_M1, iou=IOU_NMS, device=device, imgsz=1280, verbose=False,
@@ -77,7 +78,13 @@ def generate_frames():
                 conf=CONF_M2, iou=IOU_NMS, device=device,
                 verbose=False, classes=[0], imgsz=1280,
             )
-            res1, res2 = future1.result(), future2.result()
+            future3 = executor.submit(
+                model_pose.predict, frame,
+                conf=0.3, device=device, verbose=False,
+            )
+
+            res1, res2, pose_results = future1.result(), future2.result(), future3.result()
+
             b1, s1, l1 = extract_boxes(res1, img_w, img_h)
             b2, s2, l2 = extract_boxes(res2, img_w, img_h, class_filter=[0])
 
@@ -111,21 +118,23 @@ def generate_frames():
                 frame_clean = frame.copy()  # clean copy before CAM overlay
                 raw_results = classify_ppe_batch(
                     model_stage2, frame, tracked.xyxy, device,
-                    tracker_ids=tracked.tracker_id,  # stable EMA key
+                    tracker_ids=tracked.tracker_id,
+                    pose_results=pose_results,
                 )
-                # Cache frame with CAM overlay for skip frames
-                from src.inference.classifier import cam_mode_enabled
-                if cam_mode_enabled:
-                    last_cam_frame = frame.copy()
                 ppe_results = update_ema_and_decide(
                     raw_results, tracked.tracker_id, tracked.xyxy,
                     frame_clean, ppe_ema, ppe_state, violation_timer, current_time,
-                    stream_state.session_id,  # pass session_id, no circular import
+                    stream_state.session_id,
                 )
                 garbage_collection(
                     tracked.tracker_id, current_time,
                     last_seen_timer, ppe_ema, box_ema, ppe_state, violation_timer,
                 )
+
+                from src.inference.classifier import cam_mode_enabled
+                if cam_mode_enabled:
+                    last_cam_frame = frame.copy()
+
             else:
                 ppe_results = []
                 garbage_collection(
@@ -134,15 +143,15 @@ def generate_frames():
                 )
 
             last_tracked, last_ppe_results = tracked, ppe_results
+
         else:
             tracked, ppe_results = last_tracked, last_ppe_results
-            # Reuse cached CAM overlay for skip frames — fixes flicker
             from src.inference.classifier import cam_mode_enabled
             if cam_mode_enabled and last_cam_frame is not None and len(tracked) > 0:
                 for box in tracked.xyxy:
                     x1, y1, x2, y2 = map(int, box)
                     x1, y1 = max(0, x1), max(0, y1)
-                    x2, y2 = min(frame.shape[1], x2), min(frame.shape[0], y2)
+                    x2, y2 = min(img_w, x2), min(img_h, y2)
                     if x2 > x1 and y2 > y1:
                         frame[y1:y2, x1:x2] = last_cam_frame[y1:y2, x1:x2]
 

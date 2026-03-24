@@ -31,14 +31,16 @@ model_stage2_path = pull_artifact_from_mlflow_run(
     run_id="e44391ef94b54ce3b867d46b7ce33ec3",
     artifact_path="weights/best_stage2_effnet.pt",
 )
-model2_path = "yolo26l.pt"
+model2_path    = "yolo26l.pt"
+model_pose_path = "yolo26m-pose.pt"
 
 model1 = YOLO(model1_path)
 model1.predict(
     torch.zeros((1, 3, 1280, 1280)).to(device),
     imgsz=1280,
 )
-model2 = YOLO(model2_path)
+model2     = YOLO(model2_path)
+model_pose = YOLO(model_pose_path)
 
 model_stage2 = timm.create_model(
     'tf_efficientnetv2_b0',
@@ -50,7 +52,7 @@ model_stage2.load_state_dict(
 )
 model_stage2.eval().to(device)
 
-executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)  # +1 for pose
 
 app = FastAPI(title="PPE Detection API", version="3.0.0")
 app.mount(
