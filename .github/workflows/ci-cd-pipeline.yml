@@ -30,14 +30,20 @@ jobs:
       - name: Install Python Dependencies
         run: |
           pip install --upgrade pip
-          pip install fastapi jinja2 mlflow numpy pandas Pillow \
-                      python-dotenv python-multipart requests \
-                      supabase==2.3.4 uvicorn pytest httpx groq
-
-      - name: Install Lightweight Test Dependencies
-        run: |
-          pip install --upgrade pip
-          pip install fastapi httpx pytest supabase mlflow
+          pip install \
+            fastapi==0.135.1 \
+            starlette==0.47.3 \
+            jinja2==3.1.6 \
+            pytest==8.4.2 \
+            httpx==0.28.1 \
+            supabase==2.3.4 \
+            mlflow \
+            python-dotenv==1.0.0 \
+            python-multipart==0.0.20 \
+            requests==2.32.5 \
+            uvicorn==0.35.0 \
+            groq \
+            numpy pandas Pillow
 
       - name: Execute System Tests
         env:
