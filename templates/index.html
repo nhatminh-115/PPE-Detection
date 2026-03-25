@@ -379,7 +379,7 @@ async function addCamera() {
     else { const rtsp=document.getElementById('modal-rtsp-url').value.trim(); if (!rtsp){showToast('Enter URL','error');return;} const lbl=document.getElementById('modal-cam-label-rtsp').value; url=`/api/cameras/add_rtsp?url=${encodeURIComponent(rtsp)}&label=${encodeURIComponent(lbl)}`; }
     try {
         const res=await fetch(url,{method:'POST'}); const data=await res.json();
-        if (data.status==='success') { activeCameras[data.cam_id]={label:data.label,imgEl:null,hasZone:false}; if (!focusedCamId) focusedCamId=data.cam_id; closeAddModal(); renderGrid(); renderCameraList(); updateStreamStatus(); showToast(`${data.label} added`,'success'); if (!isStreaming) startStreaming(); }
+        if (data.status==='success') { activeCameras[data.cam_id]={label:data.label,imgEl:null,hasZone:false}; if (!focusedCamId) focusedCamId=data.cam_id; closeAddModal(); renderGrid(); renderCameraList(); updateStreamStatus(); showToast(`${data.label} added`,'success'); if (!isStreaming) startStreaming(); setTimeout(()=>openZoneEditor(data.cam_id),120); }
         else showToast(data.message||'Failed','error');
     } catch(e){showToast('Network error','error');}
 }
@@ -432,7 +432,20 @@ async function uploadVideoFile() {
     document.getElementById('file-name').textContent=file.name;
     const fd=new FormData(); fd.append('video_file',file);
     const res=await fetch('/upload_video',{method:'POST',body:fd}); const data=await res.json();
-    if(data.status==='success'){await syncCamerasFromBackend();showToast(data.message,'success');if(!isStreaming)startStreaming();}
+    if(data.status==='success'){
+        if (data.cam_id && !activeCameras[data.cam_id]) {
+            activeCameras[data.cam_id] = { label: data.label || file.name, imgEl: null, hasZone: false };
+            if (!focusedCamId) focusedCamId = data.cam_id;
+            renderGrid();
+            renderCameraList();
+            updateStreamStatus();
+        } else {
+            await syncCamerasFromBackend();
+        }
+        showToast(data.message,'success');
+        if(!isStreaming)startStreaming();
+        if (data.cam_id) setTimeout(()=>openZoneEditor(data.cam_id),120);
+    }
     else showToast('Upload failed.','error');
 }
 

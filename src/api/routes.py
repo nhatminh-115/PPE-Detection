@@ -221,11 +221,21 @@ async def upload_video(video_file: UploadFile = File(...)):
         file_path = f"temp_uploads/{video_file.filename}"
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(video_file.file, buffer)
+
+        # Multi-camera flow: inject uploaded file as a real camera source.
+        cam = camera_registry.add(source=file_path, label=video_file.filename or "Uploaded Video")
+
+        # Keep legacy state in sync for backward compatibility.
         stream_state.source          = file_path
         stream_state.trigger_restart = True
         stream_state.session_id      = str(uuid.uuid4())[:8]
         reported_violations.clear()
-        return {"status": "success", "message": f"Source injected: {video_file.filename}"}
+        return {
+            "status": "success",
+            "message": f"Source injected: {video_file.filename}",
+            "cam_id": cam.cam_id,
+            "label": cam.label,
+        }
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
