@@ -16,6 +16,7 @@ _MOCK_MODULES = [
     "sahi",
     "mlflow", "mlflow.artifacts",
     "supabase",
+    "open_clip",
 ]
 for mod in _MOCK_MODULES:
     sys.modules[mod] = MagicMock()
@@ -26,6 +27,10 @@ mock_supabase_client.table.return_value.select.return_value \
     .execute.return_value.data = []
 mock_supabase_client.table.return_value.insert.return_value.execute.return_value = {}
 sys.modules["supabase"].create_client = MagicMock(return_value=mock_supabase_client)
+
+sys.modules["open_clip"].create_model_and_transforms = MagicMock(
+    return_value=(MagicMock(), None, MagicMock())
+)
 
 # Set env vars
 os.environ.setdefault("SUPABASE_URL", "https://mock.supabase.co")

@@ -5,10 +5,15 @@ import threading
 import numpy as np
 import supervision as sv
 from src.api.app import app, model1, model2, model_pose, model_stage2, device
-from src.config import CONF_M1, CONF_M2, IOU_NMS, DETECT_EVERY, BOX_EMA_ALPHA
+from src.config import (
+    CONF_M1, CONF_M2, IOU_NMS, DETECT_EVERY, BOX_EMA_ALPHA,
+    CLASSIFY_ACTIVE_SEC, CLASSIFY_COOLDOWN_SEC,
+    CLASSIFY_FORCE_RECHECK_SEC, CLASSIFY_UNCERTAIN_MARGIN,
+    CLIP_LOCK_MIN_CONF, PPE_THRESHOLDS,
+)
 from src.inference import (
     extract_boxes, fuse_boxes, WBF_AVAILABLE,
-    classify_ppe_batch, update_ema_and_decide,
+    classify_ppe_batch, should_run_pose_for_boxes, update_ema_and_decide,
     garbage_collection, StreamState,
 )
 import cv2
@@ -25,6 +30,32 @@ POSE_EVERY         = 9
 _latest_frames: dict[str, bytes] = {}
 
 
+def _is_verdict_stable(verdict: dict | None) -> bool:
+    if not verdict or "probs" not in verdict:
+        return False
+
+    probs = verdict["probs"]
+    if probs is None or len(probs) < 2:
+        return False
+
+    model_name = str(verdict.get("router_model", "")).lower()
+    min_certainty = float(CLIP_LOCK_MIN_CONF) if model_name == "clip" else 0.72
+
+    for i, label in enumerate(("hardhat", "vest")):
+        p = float(probs[i])
+        certainty = max(p, 1.0 - p)
+        if certainty < min_certainty:
+            return False
+
+        th = PPE_THRESHOLDS[label]
+        dist_warn = abs(p - float(th["warn"]))
+        dist_ok = abs(p - float(th["ok"]))
+        if min(dist_warn, dist_ok) < float(CLASSIFY_UNCERTAIN_MARGIN):
+            return False
+
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Zone filtering
 # ---------------------------------------------------------------------------
@@ -35,10 +66,18 @@ def _filter_by_zone(boxes, zone_polygon):
     inside = []
     for i, box in enumerate(boxes):
         x1, y1, x2, y2 = box
-        foot_x = float((x1 + x2) / 2)
-        foot_y = float(y2)
-        if cv2.pointPolygonTest(zone_polygon, (foot_x, foot_y), False) >= 0:
-            inside.append(i)
+        # Check multiple sample points — any overlap counts
+        sample_points = [
+            ((x1 + x2) / 2, y2),       # bottom-center (foot)
+            ((x1 + x2) / 2, y1),       # top-center (head)
+            (x1, (y1 + y2) / 2),       # left-center
+            (x2, (y1 + y2) / 2),       # right-center
+            ((x1 + x2) / 2, (y1 + y2) / 2),  # center
+        ]
+        for px, py in sample_points:
+            if cv2.pointPolygonTest(zone_polygon, (float(px), float(py)), False) >= 0:
+                inside.append(i)
+                break
     return inside
 
 
@@ -122,6 +161,7 @@ def _inference_worker(cam_state: CameraState, frame_q: queue.Queue, result_q: qu
         minimum_consecutive_frames=2,
     )
     ppe_ema, box_ema, ppe_state      = {}, {}, {}
+    classify_lock                    = {}   # {tid: {state, started, locked_at, verdict}}
     violation_timer, last_seen_timer = {}, {}
     frame_count       = 0
     last_tracked      = sv.Detections.empty()
@@ -149,10 +189,6 @@ def _inference_worker(cam_state: CameraState, frame_q: queue.Queue, result_q: qu
         if frame_count % DETECT_EVERY == 0:
             res1 = model1.predict(frame, conf=CONF_M1, iou=IOU_NMS, device=device, imgsz=1280, verbose=False)
             res2 = model2.predict(frame, conf=CONF_M2, iou=IOU_NMS, device=device, verbose=False, classes=[0], imgsz=1280)
-            if frame_count % POSE_EVERY == 0:
-                last_pose_results = model_pose.predict(frame, conf=0.3, device=device, verbose=False)
-            pose_results = last_pose_results
-
             b1, s1, l1 = extract_boxes(res1, img_w, img_h)
             b2, s2, l2 = extract_boxes(res2, img_w, img_h, class_filter=[0])
 
@@ -186,20 +222,69 @@ def _inference_worker(cam_state: CameraState, frame_q: queue.Queue, result_q: qu
                 zone_tids  = tracked.tracker_id[zone_ids] if zone_ids else tracked.tracker_id[:0]
 
                 frame_clean = frame.copy()
-                raw_zone = classify_ppe_batch(
-                    model_stage2, frame, zone_boxes, device,
-                    tracker_ids=zone_tids, pose_results=pose_results,
-                )
+
+                # ── Detect → Lock → Cooldown ──
                 raw_results = [None] * len(tracked.xyxy)
-                for i, zi in enumerate(zone_ids):
-                    raw_results[zi] = raw_zone[i]
+                active_box_list = []
+                active_zone_map = []   # (j_in_zone, zi_in_tracked)
+
+                for j, zi in enumerate(zone_ids):
+                    tid = int(zone_tids[j])
+                    if tid not in classify_lock:
+                        classify_lock[tid] = {
+                            "state": "ACTIVE", "started": current_time,
+                            "locked_at": 0.0, "verdict": None,
+                        }
+                    lock = classify_lock[tid]
+
+                    if lock["state"] == "ACTIVE":
+                        elapsed = current_time - lock["started"]
+                        if elapsed >= CLASSIFY_ACTIVE_SEC and lock["verdict"] is not None and _is_verdict_stable(lock["verdict"]):
+                            lock["state"] = "LOCKED"
+                            lock["locked_at"] = current_time
+                            raw_results[zi] = lock["verdict"]
+                        else:
+                            active_box_list.append(zone_boxes[j])
+                            active_zone_map.append((j, zi))
+                    elif lock["state"] == "LOCKED":
+                        lock_age = current_time - lock["locked_at"]
+                        force_recheck = lock_age >= CLASSIFY_FORCE_RECHECK_SEC
+                        cooldown_expired = lock_age >= CLASSIFY_COOLDOWN_SEC
+                        unstable = not _is_verdict_stable(lock["verdict"])
+                        if force_recheck or cooldown_expired or unstable:
+                            lock["state"] = "ACTIVE"
+                            lock["started"] = current_time
+                            lock["verdict"] = None
+                            active_box_list.append(zone_boxes[j])
+                            active_zone_map.append((j, zi))
+                        else:
+                            raw_results[zi] = lock["verdict"]
+
+                # Classify only ACTIVE trackers
+                if active_box_list:
+                    active_boxes_arr = np.array(active_box_list)
+                    active_tids_arr  = np.array([int(zone_tids[j]) for j, _ in active_zone_map])
+
+                    pose_results = None
+                    if should_run_pose_for_boxes(model_stage2, active_boxes_arr):
+                        if frame_count % POSE_EVERY == 0 or last_pose_results is None:
+                            last_pose_results = model_pose.predict(frame, conf=0.3, device=device, verbose=False)
+                        pose_results = last_pose_results
+
+                    active_raw = classify_ppe_batch(
+                        model_stage2, frame, active_boxes_arr, device,
+                        tracker_ids=active_tids_arr, pose_results=pose_results,
+                    )
+                    for k, (j, zi) in enumerate(active_zone_map):
+                        raw_results[zi] = active_raw[k]
+                        classify_lock[int(zone_tids[j])]["verdict"] = active_raw[k]
 
                 ppe_results = update_ema_and_decide(
                     raw_results, tracked.tracker_id, tracked.xyxy,
                     frame_clean, ppe_ema, ppe_state, violation_timer,
                     current_time, cam_state.session_id,
                 )
-                garbage_collection(tracked.tracker_id, current_time, last_seen_timer, ppe_ema, box_ema, ppe_state, violation_timer)
+                garbage_collection(tracked.tracker_id, current_time, last_seen_timer, ppe_ema, box_ema, ppe_state, violation_timer, classify_lock)
             else:
                 ppe_results = []
                 garbage_collection([], current_time, last_seen_timer, ppe_ema, box_ema, ppe_state, violation_timer)

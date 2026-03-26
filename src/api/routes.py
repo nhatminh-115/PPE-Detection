@@ -274,6 +274,26 @@ def get_thresholds():
     return {"thresholds": PPE_THRESHOLDS}
 
 
+@app.get("/api/router_config")
+def get_router_config():
+    return {
+        "min_side_px": float(_clf.router_min_side_px),
+    }
+
+
+@app.post("/api/router_config")
+def update_router_config(min_side_px: float = 90.0):
+    # Keep threshold in a practical range to avoid accidental extremes from UI.
+    clamped = max(32.0, min(512.0, float(min_side_px)))
+    _clf.router_min_side_px = clamped
+    return {
+        "status": "success",
+        "router": {
+            "min_side_px": clamped,
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # CAM mode
 # ---------------------------------------------------------------------------
@@ -282,6 +302,17 @@ def get_thresholds():
 def toggle_cam_mode(enabled: bool = True):
     _clf.cam_mode_enabled = enabled
     return {"status": "success", "cam_mode": enabled}
+
+
+@app.get("/api/clip_pose")
+def get_clip_pose_mode():
+    return {"clip_use_pose": bool(_clf.clip_use_pose)}
+
+
+@app.post("/api/clip_pose")
+def set_clip_pose_mode(enabled: bool = True):
+    _clf.clip_use_pose = bool(enabled)
+    return {"status": "success", "clip_use_pose": bool(_clf.clip_use_pose)}
 
 
 # ---------------------------------------------------------------------------

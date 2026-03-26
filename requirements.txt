@@ -18,6 +18,7 @@ streamlit
 supabase==2.3.4
 supervision
 timm
+open_clip_torch
 torch
 torchmetrics
 torchvision

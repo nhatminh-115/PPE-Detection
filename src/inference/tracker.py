@@ -102,6 +102,11 @@ def update_ema_and_decide(
             for i in range(len(LABEL_COLS))
         ]
 
+        quality = result.get("quality", {}) if isinstance(result, dict) else {}
+        if quality.get("hardhat_visibility_low", False) and len(new_states) > 0 and new_states[0] == 0:
+            # Low-visibility head should not be escalated directly to hardhat miss.
+            new_states[0] = 1
+
         if tid not in violation_timer:
             violation_timer[tid] = {"duration": 0.0, "last_tick": current_time}
 
@@ -136,7 +141,11 @@ def update_ema_and_decide(
                     )
 
         ppe_state[tid] = new_states
-        smoothed.append({"probs": avg_probs, "states": new_states})
+        smoothed.append({
+            "probs": avg_probs,
+            "states": new_states,
+            "router_model": result.get("router_model") if isinstance(result, dict) else None,
+        })
 
     return smoothed
 
@@ -174,7 +183,10 @@ def draw_ppe_result(frame, box, ppe_result, tracker_id):
         if state == 0:   label_parts.append(f"MISS {name}")
         elif state == 1: label_parts.append(f"WARN {name}")
 
-    label_text = f"ID:{tracker_id} " + ("- ".join(label_parts) if label_parts else "ALL OK")
+    model_tag = ""
+    if isinstance(ppe_result, dict) and ppe_result.get("router_model"):
+        model_tag = f" [{str(ppe_result['router_model']).upper()}]"
+    label_text = f"ID:{tracker_id}{model_tag} " + ("- ".join(label_parts) if label_parts else "ALL OK")
 
     cv2.rectangle(frame, (x1, y1), (x2, y2), main_color, 2)
     (tw, th), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)

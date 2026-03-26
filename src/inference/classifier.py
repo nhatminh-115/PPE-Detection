@@ -1,47 +1,139 @@
+"""
+PPE Classifier — CLIP Zero-Shot.
+
+Replaces EfficientNetV2-B0 with CLIP ViT-B/32 zero-shot classification.
+Full-body crop → CLIP image embedding → cosine similarity with text prompts
+→ softmax → P(hardhat), P(vest).
+"""
+
 import cv2
 import torch
 import numpy as np
 from PIL import Image
-from torchvision import transforms
-from src.config import IMG_SIZE
+from src.config import (
+    ROUTER_MIN_SIDE_PX,
+    CLIP_USE_POSE,
+    HARDHAT_VIS_MIN_SIDE,
+    HARDHAT_VIS_MIN_BRIGHT,
+    HARDHAT_VIS_MIN_SHARP,
+    WHITE_HARDHAT_PRIOR_ENABLE,
+    WHITE_HARDHAT_SAT_MAX,
+    WHITE_HARDHAT_VAL_MIN,
+    WHITE_HARDHAT_MIN_RATIO,
+    WHITE_HARDHAT_PROB_BOOST,
+)
 
-val_transform = transforms.Compose([
-    transforms.Resize((IMG_SIZE, IMG_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-])
 
-# Global flag — toggled via /api/cam_mode endpoint
+# Global flag — toggled via /api/cam_mode endpoint (kept for API compat, no-op)
 cam_mode_enabled: bool = False
+router_min_side_px: float = float(ROUTER_MIN_SIDE_PX)
+clip_use_pose: bool = bool(CLIP_USE_POSE)
 
-# CAM EMA smoothing {tracker_id: {"hardhat": np, "vest": np}}
-_cam_ema: dict = {}
-CAM_EMA_ALPHA  = 0.1
-
-# COCO keypoint indices
-_HEAD_KPS    = [0, 1, 2, 3, 4]   # nose, eyes, ears
-_TORSO_KPS   = [5, 6, 11, 12]    # shoulders, hips
-_KP_CONF_THR = 0.3
+_KP_CONF_THR = 0.30
+_HEAD_KPS = [0, 1, 2, 3, 4]
+_TORSO_KPS = [5, 6, 11, 12]
 
 
-# ---------------------------------------------------------------------------
-# Pose-guided crop helpers
-# ---------------------------------------------------------------------------
+def has_effnet_model(model_stage2) -> bool:
+    if not isinstance(model_stage2, dict):
+        return False
+    effnet_bundle = model_stage2.get("effnet")
+    return isinstance(effnet_bundle, dict) and effnet_bundle.get("model") is not None
 
-def _kp_crop(frame, keypoints, kp_indices, img_w, img_h, pad_ratio=0.4):
-    """Extract crop region from keypoints. Returns (crop, x1, y1, x2, y2) or None."""
-    valid_kps = [
-        keypoints[i] for i in kp_indices
-        if i < len(keypoints) and keypoints[i][2] >= _KP_CONF_THR
-    ]
-    if len(valid_kps) < 2:
+
+def _get_clip_bundle(model_stage2):
+    # Backward compatibility: accept either plain CLIP bundle or hybrid dict.
+    if isinstance(model_stage2, dict) and "clip" in model_stage2:
+        return model_stage2["clip"]
+    return model_stage2
+
+
+def _compute_router_indices(model_stage2, boxes_np: np.ndarray):
+    widths = boxes_np[:, 2] - boxes_np[:, 0]
+    heights = boxes_np[:, 3] - boxes_np[:, 1]
+    min_sides = np.minimum(widths, heights)
+
+    use_effnet_mask = (min_sides < float(router_min_side_px))
+    if not has_effnet_model(model_stage2):
+        use_effnet_mask = np.zeros_like(use_effnet_mask, dtype=bool)
+
+    effnet_idx = np.where(use_effnet_mask)[0].tolist()
+    clip_idx = np.where(~use_effnet_mask)[0].tolist()
+    return effnet_idx, clip_idx
+
+
+def should_run_pose_for_boxes(model_stage2, boxes) -> bool:
+    if not clip_use_pose or boxes is None or len(boxes) == 0:
+        return False
+    boxes_np = np.asarray(boxes, dtype=np.float32)
+    _, clip_idx = _compute_router_indices(model_stage2, boxes_np)
+    return len(clip_idx) > 0
+
+
+def _match_pose_to_box(box, pose_results):
+    if pose_results is None:
         return None
 
-    xs = [k[0] for k in valid_kps]
-    ys = [k[1] for k in valid_kps]
-    cx = (min(xs) + max(xs)) / 2
-    cy = (min(ys) + max(ys)) / 2
-    half = max((max(xs) - min(xs)) / 2, (max(ys) - min(ys)) / 2, 20) * (1 + pad_ratio)
+    bx1, by1, bx2, by2 = map(float, box)
+    candidates = []
+
+    for r in pose_results:
+        if getattr(r, "keypoints", None) is None:
+            continue
+        for person_kps in r.keypoints.data:
+            kps = person_kps.cpu().numpy()
+            valid = kps[kps[:, 2] >= _KP_CONF_THR]
+            if len(valid) == 0:
+                continue
+
+            min_x, min_y = valid[:, 0].min(), valid[:, 1].min()
+            max_x, max_y = valid[:, 0].max(), valid[:, 1].max()
+            inter_x1 = max(bx1, min_x)
+            inter_y1 = max(by1, min_y)
+            inter_x2 = min(bx2, max_x)
+            inter_y2 = min(by2, max_y)
+            inter_w = max(0.0, inter_x2 - inter_x1)
+            inter_h = max(0.0, inter_y2 - inter_y1)
+            inter_area = inter_w * inter_h
+            if inter_area <= 0:
+                continue
+
+            kps_area = max(1.0, (max_x - min_x) * (max_y - min_y))
+            overlap = inter_area / kps_area
+            cx = (min_x + max_x) * 0.5
+            cy = (min_y + max_y) * 0.5
+            bx = (bx1 + bx2) * 0.5
+            by = (by1 + by2) * 0.5
+            dist = np.hypot(cx - bx, cy - by)
+            candidates.append((overlap, -dist, kps))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    best_overlap = candidates[0][0]
+    if best_overlap < 0.15:
+        return None
+    # Ambiguous associations in crowded scenes: fall back to bbox region crop.
+    if len(candidates) > 1 and abs(candidates[0][0] - candidates[1][0]) < 0.07:
+        return None
+    return candidates[0][2]
+
+
+def _crop_from_kps(frame, kps, kp_indices, fallback_box, pad_ratio=0.40):
+    img_h, img_w = frame.shape[:2]
+    valid = [
+        kps[idx] for idx in kp_indices
+        if idx < len(kps) and kps[idx][2] >= _KP_CONF_THR
+    ]
+    if len(valid) < 2:
+        return None, None
+
+    xs = [p[0] for p in valid]
+    ys = [p[1] for p in valid]
+    cx = (min(xs) + max(xs)) / 2.0
+    cy = (min(ys) + max(ys)) / 2.0
+    half = max((max(xs) - min(xs)) / 2.0, (max(ys) - min(ys)) / 2.0, 12.0) * (1.0 + pad_ratio)
 
     x1 = int(max(0, cx - half))
     y1 = int(max(0, cy - half))
@@ -49,71 +141,211 @@ def _kp_crop(frame, keypoints, kp_indices, img_w, img_h, pad_ratio=0.4):
     y2 = int(min(img_h, cy + half))
 
     if x2 - x1 < 10 or y2 - y1 < 10:
-        return None
-
+        return None, None
     crop = frame[y1:y2, x1:x2]
     if crop.size == 0:
+        return None, None
+    return crop, (x1, y1, x2, y2)
+
+
+def _fallback_regions(frame, box):
+    img_h, img_w = frame.shape[:2]
+    x1, y1, x2, y2 = map(int, box)
+    bw = max(1, x2 - x1)
+    bh = max(1, y2 - y1)
+
+    pw = int(bw * 0.10)
+    ph = int(bh * 0.08)
+    x1p = max(0, x1 - pw)
+    x2p = min(img_w, x2 + pw)
+    y1p = max(0, y1 - ph)
+    y2p = min(img_h, y2 + ph)
+
+    h_total = max(1, y2p - y1p)
+    head_y2 = y1p + int(h_total * 0.42)
+    torso_y1 = y1p + int(h_total * 0.20)
+    torso_y2 = y1p + int(h_total * 0.85)
+
+    head = frame[y1p:head_y2, x1p:x2p]
+    torso = frame[torso_y1:torso_y2, x1p:x2p]
+    if head.size == 0:
+        head = frame[y1p:y2p, x1p:x2p]
+    if torso.size == 0:
+        torso = frame[y1p:y2p, x1p:x2p]
+    return head, (x1p, y1p, x2p, head_y2), torso, (x1p, torso_y1, x2p, torso_y2)
+
+
+def _ensure_min_crop(crop, min_w=80, min_h=80):
+    if crop is None or crop.size == 0:
         return None
-    return crop, x1, y1, x2, y2
-
-
-def _match_pose_to_box(box, pose_results, img_w, img_h):
-    """Match person box to pose keypoints. Returns [17, 3] array or None."""
-    if pose_results is None or len(pose_results) == 0:
-        return None
-
-    bx1, by1, bx2, by2 = map(int, box)
-
-    for r in pose_results:
-        if r.keypoints is None:
-            continue
-        for person_kps in r.keypoints.data:
-            kps = person_kps.cpu().numpy()  # [17, 3]
-            nose = kps[0]
-            if nose[2] >= _KP_CONF_THR:
-                cx, cy = nose[0], nose[1]
-            else:
-                valid = kps[kps[:, 2] >= _KP_CONF_THR]
-                if len(valid) == 0:
-                    continue
-                cx, cy = valid[:, 0].mean(), valid[:, 1].mean()
-
-            if bx1 <= cx <= bx2 and by1 <= cy <= by2:
-                return kps
-
-    return None
-
-
-def _ensure_min_size(crop):
     h, w = crop.shape[:2]
-    if w < 80 or h < 100:
-        scale = max(80 / w, 100 / h)
-        crop  = cv2.resize(
-            crop,
-            (int(w * scale), int(h * scale)),
-            interpolation=cv2.INTER_LANCZOS4,
-        )
+    if w < min_w or h < min_h:
+        scale = max(min_w / max(w, 1), min_h / max(h, 1))
+        crop = cv2.resize(crop, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_LANCZOS4)
     return crop
 
 
-# ---------------------------------------------------------------------------
-# Main classify function
-# ---------------------------------------------------------------------------
+def _estimate_head_quality(head_crop):
+    if head_crop is None or head_crop.size == 0:
+        return {
+            "hardhat_visibility_low": True,
+            "head_min_side": 0.0,
+            "head_brightness": 0.0,
+            "head_sharpness": 0.0,
+        }
+    h, w = head_crop.shape[:2]
+    min_side = float(min(h, w))
+    gray = cv2.cvtColor(head_crop, cv2.COLOR_BGR2GRAY)
+    sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    hsv = cv2.cvtColor(head_crop, cv2.COLOR_BGR2HSV)
+    brightness = float(hsv[:, :, 2].mean())
 
-def classify_ppe_batch(
-    model_stage2, frame, boxes, device,
-    tracker_ids=None,
-    pose_results=None,
-):
-    """
-    EfficientNetV2 inference with pose-guided crop strategy.
-    - Head crop (keypoints 0-4) → hardhat classification
-    - Torso crop (keypoints 5,6,11,12) → vest classification
-    - Fallback to % crop if pose unavailable
-    """
+    visibility_low = (
+        min_side < float(HARDHAT_VIS_MIN_SIDE)
+        or sharpness < float(HARDHAT_VIS_MIN_SHARP)
+        or brightness < float(HARDHAT_VIS_MIN_BRIGHT)
+    )
+    return {
+        "hardhat_visibility_low": bool(visibility_low),
+        "head_min_side": min_side,
+        "head_brightness": brightness,
+        "head_sharpness": sharpness,
+    }
+
+
+def _estimate_white_hardhat_ratio(head_crop):
+    if head_crop is None or head_crop.size == 0:
+        return 0.0
+
+    h, w = head_crop.shape[:2]
+    top_h = max(1, int(h * 0.60))
+    roi = head_crop[:top_h, :]
+    if roi.size == 0:
+        return 0.0
+
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    sat = hsv[:, :, 1].astype(np.float32)
+    val = hsv[:, :, 2].astype(np.float32)
+
+    white_mask = (sat <= float(WHITE_HARDHAT_SAT_MAX)) & (val >= float(WHITE_HARDHAT_VAL_MIN))
+    return float(white_mask.mean())
+
+
+def _draw_clip_focus_overlay(frame, head_rect, torso_rect, visibility_low=False):
+    if head_rect is not None:
+        x1, y1, x2, y2 = head_rect
+        color = (0, 165, 255) if visibility_low else (56, 139, 253)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1)
+        tag = "CLIP HEAD" if not visibility_low else "CLIP HEAD LOW-VIS"
+        cv2.putText(frame, tag, (x1, max(10, y1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1, cv2.LINE_AA)
+    if torso_rect is not None:
+        x1, y1, x2, y2 = torso_rect
+        color = (80, 220, 120)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1)
+        cv2.putText(frame, "CLIP TORSO", (x1, max(10, y1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1, cv2.LINE_AA)
+
+
+def _classify_clip_batch(clip_bundle, frame, boxes, device, pose_results=None):
+    model = clip_bundle["model"]
+    preprocess = clip_bundle["preprocess"]
+    text_feats = clip_bundle["text_features"]
+
+    head_tensors = []
+    torso_tensors = []
+    valid_idx = []
+    quality_meta = []
+    focus_rects = []
+
+    for i, box in enumerate(boxes):
+        x1, y1, x2, y2 = map(float, box)
+        if (x2 - x1) < 10 or (y2 - y1) < 15:
+            continue
+
+        head_crop, head_rect = None, None
+        torso_crop, torso_rect = None, None
+        if clip_use_pose and pose_results is not None:
+            kps = _match_pose_to_box(box, pose_results)
+            if kps is not None:
+                head_crop, head_rect = _crop_from_kps(frame, kps, _HEAD_KPS, box, pad_ratio=0.45)
+                torso_crop, torso_rect = _crop_from_kps(frame, kps, _TORSO_KPS, box, pad_ratio=0.25)
+
+        if head_crop is None or torso_crop is None:
+            fallback_head, fallback_head_rect, fallback_torso, fallback_torso_rect = _fallback_regions(frame, box)
+            if head_crop is None:
+                head_crop, head_rect = fallback_head, fallback_head_rect
+            if torso_crop is None:
+                torso_crop, torso_rect = fallback_torso, fallback_torso_rect
+
+        head_quality = _estimate_head_quality(head_crop)
+
+        head_crop = _ensure_min_crop(head_crop, min_w=72, min_h=72)
+        torso_crop = _ensure_min_crop(torso_crop, min_w=96, min_h=96)
+        if head_crop is None or torso_crop is None:
+            continue
+
+        head_pil = Image.fromarray(cv2.cvtColor(head_crop, cv2.COLOR_BGR2RGB))
+        torso_pil = Image.fromarray(cv2.cvtColor(torso_crop, cv2.COLOR_BGR2RGB))
+        head_tensors.append(preprocess(head_pil))
+        torso_tensors.append(preprocess(torso_pil))
+        valid_idx.append(i)
+        quality_meta.append(head_quality)
+        focus_rects.append((head_rect, torso_rect))
+
+    if not valid_idx:
+        return [None] * len(boxes)
+
+    head_batch = torch.stack(head_tensors).to(device)
+    torso_batch = torch.stack(torso_tensors).to(device)
+
+    with torch.no_grad():
+        head_features = model.encode_image(head_batch)
+        head_features = head_features / head_features.norm(dim=-1, keepdim=True)
+        torso_features = model.encode_image(torso_batch)
+        torso_features = torso_features / torso_features.norm(dim=-1, keepdim=True)
+        logit_scale = model.logit_scale.exp()
+
+        h_sim = logit_scale * head_features @ text_feats["hardhat"].T
+        h_prob = h_sim.softmax(dim=-1)[:, 0].cpu().numpy()
+        v_sim = logit_scale * torso_features @ text_feats["vest"].T
+        v_prob = v_sim.softmax(dim=-1)[:, 0].cpu().numpy()
+
+    results = [None] * len(boxes)
+    for j, idx in enumerate(valid_idx):
+        quality = quality_meta[j]
+        head_rect, torso_rect = focus_rects[j]
+        if head_rect is not None:
+            x1, y1, x2, y2 = map(int, head_rect)
+            x1 = max(0, x1); y1 = max(0, y1)
+            x2 = min(frame.shape[1], x2); y2 = min(frame.shape[0], y2)
+            head_crop_for_prior = frame[y1:y2, x1:x2] if x2 > x1 and y2 > y1 else None
+        else:
+            head_crop_for_prior = None
+
+        white_ratio = _estimate_white_hardhat_ratio(head_crop_for_prior)
+        quality["white_hardhat_ratio"] = white_ratio
+
+        if WHITE_HARDHAT_PRIOR_ENABLE and white_ratio >= float(WHITE_HARDHAT_MIN_RATIO):
+            # Boost only when CLIP is not already highly confident.
+            if h_prob[j] < 0.90:
+                h_prob[j] = min(0.95, h_prob[j] + float(WHITE_HARDHAT_PROB_BOOST))
+
+        if cam_mode_enabled:
+            _draw_clip_focus_overlay(frame, head_rect, torso_rect, visibility_low=quality.get("hardhat_visibility_low", False))
+        results[idx] = {
+            "probs": np.array([float(h_prob[j]), float(v_prob[j])], dtype=np.float32),
+            "router_model": "clip",
+            "quality": quality,
+        }
+    return results
+
+
+def _classify_effnet_batch(effnet_bundle, frame, boxes, device):
+    model = effnet_bundle["model"]
+    preprocess = effnet_bundle["preprocess"]
+
     img_h, img_w = frame.shape[:2]
-    crop_data  = []
-    valid_idx  = []
+    tensors = []
+    valid_idx = []
 
     for i, box in enumerate(boxes):
         x1, y1, x2, y2 = map(int, box)
@@ -121,145 +353,94 @@ def classify_ppe_batch(
         x1c, y1c = max(0, x1 - pw), max(0, y1 - ph)
         x2c, y2c = min(img_w, x2 + pw), min(img_h, y2 + ph)
 
-        full_crop = frame[y1c:y2c, x1c:x2c]
-        if full_crop.size == 0 or (x2c - x1c) < 10 or (y2c - y1c) < 15:
+        crop_w, crop_h = x2c - x1c, y2c - y1c
+        if crop_w < 10 or crop_h < 15:
             continue
 
-        head_result  = None
-        torso_result = None
+        crop = frame[y1c:y2c, x1c:x2c]
+        if crop.size == 0:
+            continue
 
-        if pose_results is not None:
-            kps = _match_pose_to_box(box, pose_results, img_w, img_h)
-            if kps is not None:
-                head_result  = _kp_crop(frame, kps, _HEAD_KPS,  img_w, img_h, pad_ratio=0.5)
-                torso_result = _kp_crop(frame, kps, _TORSO_KPS, img_w, img_h, pad_ratio=0.25)
+        # Upscale tiny crops to preserve details before normalization.
+        if crop_w < 80 or crop_h < 100:
+            scale = max(80 / max(crop_w, 1), 100 / max(crop_h, 1))
+            crop = cv2.resize(
+                crop,
+                (int(crop_w * scale), int(crop_h * scale)),
+                interpolation=cv2.INTER_LANCZOS4,
+            )
 
-        # Hardhat crop
-        if head_result is not None:
-            hc, hx1, hy1, hx2, hy2 = head_result
-        else:
-            hy2 = y1c + int((y2c - y1c) * 0.40)
-            hc  = frame[y1c:hy2, x1c:x2c]
-            hx1, hy1, hx2 = x1c, y1c, x2c
-            if hc.size == 0:
-                hc, hx1, hy1, hx2, hy2 = full_crop, x1c, y1c, x2c, y2c
-        hc = _ensure_min_size(hc)
-
-        # Vest crop
-        if torso_result is not None:
-            tc, tx1, ty1, tx2, ty2 = torso_result
-        else:
-            ty1 = y1c + int((y2c - y1c) * 0.20)
-            ty2 = y1c + int((y2c - y1c) * 0.80)
-            tc  = frame[ty1:ty2, x1c:x2c]
-            tx1, tx2 = x1c, x2c
-            if tc.size == 0:
-                tc, tx1, ty1, tx2, ty2 = full_crop, x1c, y1c, x2c, y2c
-        tc = _ensure_min_size(tc)
-
-        crop_data.append({
-            "hardhat_crop":   hc,
-            "hardhat_coords": (hx1, hy1, hx2, hy2),
-            "vest_crop":      tc,
-            "vest_coords":    (tx1, ty1, tx2, ty2),
-        })
+        pil = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
+        tensors.append(preprocess(pil))
         valid_idx.append(i)
 
-    if not crop_data:
+    if not tensors:
         return [None] * len(boxes)
-
-    # Batch: [hardhat_0, vest_0, hardhat_1, vest_1, ...]
-    tensors = []
-    for cd in crop_data:
-        for crop in [cd["hardhat_crop"], cd["vest_crop"]]:
-            pil = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
-            tensors.append(val_transform(pil))
 
     batch = torch.stack(tensors).to(device)
 
     with torch.no_grad():
-        features = model_stage2.forward_features(batch)
-        pooled   = model_stage2.global_pool(features)
-        logits   = model_stage2.classifier(pooled)
-        probs    = torch.sigmoid(logits).cpu().numpy()
-
-        weight_hardhat = model_stage2.classifier.weight[0]
-        weight_vest    = model_stage2.classifier.weight[1]
-        cam_h = torch.relu(torch.einsum('bchw,c->bhw', features, weight_hardhat))
-        cam_v = torch.relu(torch.einsum('bchw,c->bhw', features, weight_vest))
+        logits = model(batch)
+        probs = torch.sigmoid(logits).cpu().numpy()
 
     results = [None] * len(boxes)
-
-    for pair_idx, (original_idx, cd) in enumerate(zip(valid_idx, crop_data)):
-        hi = pair_idx * 2
-        vi = pair_idx * 2 + 1
-
-        prob_hardhat = float(probs[hi][0])
-        prob_vest    = float(probs[vi][1])
-
-        # HSV penalization on head crop
-        c_h_np = _normalize_cam(cam_h[hi])
-        if prob_hardhat > 0.4:
-            hc   = cd["hardhat_crop"]
-            h, w = hc.shape[:2]
-            mask = cv2.resize(c_h_np, (w, h)) > 0.5
-            if mask.sum() > 10:
-                hsv_img = cv2.cvtColor(hc, cv2.COLOR_BGR2HSV)
-                if hsv_img[:, :, 2][mask].mean() < 70:
-                    prob_hardhat -= 0.55
-                elif hsv_img[:, :, 1][mask].mean() < 80:
-                    prob_hardhat -= 0.35
-                prob_hardhat = max(0.0, prob_hardhat)
-
-        c_v_np = _normalize_cam(cam_v[vi])
-
-        final_probs    = probs[hi].copy()
-        final_probs[0] = prob_hardhat
-        final_probs[1] = prob_vest
-
-        # CAM overlay
-        if cam_mode_enabled:
-            key = int(tracker_ids[original_idx]) if tracker_ids is not None else original_idx
-            hx1, hy1, hx2, hy2 = cd["hardhat_coords"]
-            tx1, ty1, tx2, ty2 = cd["vest_coords"]
-
-            if key not in _cam_ema:
-                _cam_ema[key] = {"hardhat": c_h_np.copy(), "vest": c_v_np.copy()}
-            else:
-                _cam_ema[key]["hardhat"] = CAM_EMA_ALPHA * c_h_np + (1 - CAM_EMA_ALPHA) * _cam_ema[key]["hardhat"]
-                _cam_ema[key]["vest"]    = CAM_EMA_ALPHA * c_v_np + (1 - CAM_EMA_ALPHA) * _cam_ema[key]["vest"]
-
-            _render_cam_overlay(frame, _cam_ema[key]["hardhat"], hx1, hy1, hx2, hy2,
-                                colormap=cv2.COLORMAP_JET, border_color=(0, 165, 255), alpha=0.45)
-            _render_cam_overlay(frame, _cam_ema[key]["vest"], tx1, ty1, tx2, ty2,
-                                colormap=cv2.COLORMAP_HOT, border_color=(0, 255, 200), alpha=0.35)
-
-        results[original_idx] = {"probs": final_probs}
+    for j, idx in enumerate(valid_idx):
+        p = probs[j]
+        if len(p) >= 2:
+            out = np.array([float(p[0]), float(p[1])], dtype=np.float32)
+        elif len(p) == 1:
+            out = np.array([float(p[0]), float(p[0])], dtype=np.float32)
+        else:
+            out = np.array([0.0, 0.0], dtype=np.float32)
+        results[idx] = {
+            "probs": out,
+            "router_model": "effnet",
+            "quality": {"hardhat_visibility_low": False},
+        }
 
     return results
 
 
-def _normalize_cam(cam_tensor):
-    c = cam_tensor.clone()
-    c_max = c.max()
-    if c_max > 1e-4:
-        c = c / c_max
-    return c.cpu().numpy()
+def classify_ppe_batch(
+    model_stage2, frame, boxes, device,
+    tracker_ids=None,
+    pose_results=None,
+):
+    """
+    CLIP zero-shot PPE classification on full-body crops.
 
+    Args:
+        clip_bundle: dict with keys "model", "preprocess", "text_features"
+        frame: BGR numpy array
+        boxes: [N, 4] xyxy bounding boxes
+        device: torch device
+        tracker_ids: optional tracker IDs (unused by CLIP, kept for interface compat)
+        pose_results: optional pose results (unused by CLIP, kept for interface compat)
 
-def _render_cam_overlay(frame, cam_np, x1, y1, x2, y2,
-                        colormap=cv2.COLORMAP_JET,
-                        border_color=(0, 165, 255),
-                        alpha=0.45):
-    rh, rw = y2 - y1, x2 - x1
-    if rh <= 0 or rw <= 0:
-        return
-    cam_norm = cam_np.copy()
-    if cam_norm.max() > 1e-4:
-        cam_norm = cam_norm / cam_norm.max()
-    heatmap = cv2.applyColorMap((cv2.resize(cam_norm, (rw, rh)) * 255).astype(np.uint8), colormap)
-    roi = frame[y1:y2, x1:x2]
-    if roi.shape[:2] == heatmap.shape[:2]:
-        frame[y1:y2, x1:x2] = cv2.addWeighted(roi, 1 - alpha, heatmap, alpha, 0)
-    if border_color:
-        cv2.rectangle(frame, (x1, y1), (x2, y2), border_color, 2)
+    Returns:
+        list of {"probs": np.array([hardhat_prob, vest_prob])} or None per box
+    """
+    if boxes is None or len(boxes) == 0:
+        return []
+
+    clip_bundle = _get_clip_bundle(model_stage2)
+    effnet_bundle = model_stage2.get("effnet") if isinstance(model_stage2, dict) else None
+
+    boxes_np = np.asarray(boxes, dtype=np.float32)
+    effnet_idx, clip_idx = _compute_router_indices(model_stage2, boxes_np)
+
+    results = [None] * len(boxes)
+
+    if effnet_idx:
+        effnet_boxes = boxes_np[effnet_idx]
+        effnet_results = _classify_effnet_batch(effnet_bundle, frame, effnet_boxes, device)
+        for local_i, global_i in enumerate(effnet_idx):
+            results[global_i] = effnet_results[local_i]
+
+    if clip_idx:
+        clip_boxes = boxes_np[clip_idx]
+        clip_results = _classify_clip_batch(clip_bundle, frame, clip_boxes, device, pose_results=pose_results)
+        for local_i, global_i in enumerate(clip_idx):
+            results[global_i] = clip_results[local_i]
+
+    return results
