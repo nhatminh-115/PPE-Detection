@@ -220,33 +220,33 @@
             <span class="control-label">Model Router</span>
             <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
                 <span style="font-size:11px;color:var(--text-secondary);">EffNet if min(width,height) &lt;</span>
-                <span id="router-min-side-val" style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);">110 px</span>
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <input
+                        type="number"
+                        id="router-min-side-val"
+                        min="32"
+                        max="512"
+                        step="1"
+                        value="110"
+                        oninput="onRouterValueInput()"
+                        onchange="applyRouterConfig()"
+                        onkeydown="onRouterValueKeydown(event)"
+                        style="width:64px;padding:2px 6px;background:rgba(56,139,253,0.12);border:1px solid rgba(56,139,253,0.35);border-radius:5px;color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:10px;text-align:right;"
+                    >
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);">px</span>
+                </div>
             </div>
             <input
                 type="range"
                 id="router-min-side"
                 min="32"
                 max="512"
-                step="2"
+                step="1"
                 value="110"
                 oninput="onRouterSliderInput()"
                 onchange="applyRouterConfig()"
                 style="width:100%;accent-color:#388bfd;"
             >
-            <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-                <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">Set value (px)</span>
-                <input
-                    type="number"
-                    id="router-min-side-input"
-                    min="32"
-                    max="512"
-                    step="2"
-                    value="110"
-                    oninput="onRouterNumberInput()"
-                    onchange="applyRouterConfig()"
-                    style="flex:1;padding:6px 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:12px;font-family:'JetBrains Mono',monospace;"
-                >
-            </div>
             <div style="display:flex;justify-content:space-between;margin-top:4px;">
                 <span style="font-size:10px;color:var(--text-muted);">Small person → EffNet</span>
                 <span style="font-size:10px;color:var(--text-muted);">Large person → CLIP</span>
@@ -514,31 +514,38 @@ async function applyThresholds() {
 
 function onRouterSliderInput() {
     const slider = document.getElementById('router-min-side');
-    const input = document.getElementById('router-min-side-input');
     const val = parseInt(slider.value, 10);
-    if (input) input.value = val;
-    document.getElementById('router-min-side-val').textContent = `${val} px`;
+    document.getElementById('router-min-side-val').value = val;
 }
 
-function onRouterNumberInput() {
+function getNormalizedRouterValue() {
     const slider = document.getElementById('router-min-side');
-    const input = document.getElementById('router-min-side-input');
-    if (!slider || !input) return;
+    const input = document.getElementById('router-min-side-val');
 
     const min = parseInt(slider.min, 10);
     const max = parseInt(slider.max, 10);
-    const step = parseInt(slider.step || '1', 10);
     let val = parseInt(input.value, 10);
+
     if (Number.isNaN(val)) {
         val = parseInt(slider.value, 10);
     }
 
     val = Math.max(min, Math.min(max, val));
-    val = Math.round(val / step) * step;
 
     slider.value = val;
     input.value = val;
-    document.getElementById('router-min-side-val').textContent = `${val} px`;
+    return val;
+}
+
+function onRouterValueInput() {
+    // Allow free typing while editing; normalize only on blur/Enter.
+}
+
+function onRouterValueKeydown(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        applyRouterConfig();
+    }
 }
 
 async function fetchRouterConfig() {
@@ -547,9 +554,9 @@ async function fetchRouterConfig() {
         const data = await res.json();
         const val = Math.round(data.min_side_px || 110);
         const slider = document.getElementById('router-min-side');
-        const input = document.getElementById('router-min-side-input');
+        const input = document.getElementById('router-min-side-val');
         slider.value = val;
-        if (input) input.value = val;
+        input.value = val;
         onRouterSliderInput();
     } catch (e) {
         onRouterSliderInput();
@@ -557,8 +564,7 @@ async function fetchRouterConfig() {
 }
 
 async function applyRouterConfig() {
-    onRouterNumberInput();
-    const val = document.getElementById('router-min-side').value;
+    const val = getNormalizedRouterValue();
     const res = await fetch(`/api/router_config?min_side_px=${val}`, { method: 'POST' });
     if (res.ok) {
         showToast('Router threshold updated', 'success');
