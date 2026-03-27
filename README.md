@@ -6,15 +6,22 @@
 
 # PPE Detection
 
-PPE Vision is a real-time, cloud-native inference engine designed for autonomous Personal Protective Equipment (PPE) compliance monitoring. Engineered for high-stakes construction and industrial environments, the system decouples complex Deep Learning inference from robust Data Observability and State Management.
+PPE Vision is a real-time, cloud-native inference engine for autonomous Personal Protective Equipment (PPE) compliance monitoring. Engineered for high-stakes construction and industrial environments, the system integrates a multi-stage deep learning pipeline with a compliance reporting layer grounded in Vietnamese labor regulations.
 
 ---
 
-## 1. System Architecture Overview 
+## 1. System Architecture Overview
 
-The platform is designed around a microservices architecture, exposing a scalable FastAPI application that integrates natively with MLflow for dynamic artifact retrieval and Supabase for unstructured event logging.
+![PPE Vision Architecture](docs/PPE_Pipeline_4.png)
 
-![PPE Vision Architecture](docs/PPE_Pipeline_3_.png)
+| Component | Technology | Role |
+|---|---|---|
+| Person Detection | YOLO11s + YOLO26l + WBF | Dual-model ensemble, recall-optimized |
+| Tracking | ByteTrack + Box EMA | Stable ID assignment, spatial smoothing |
+| PPE Classification | SigLIP SO400M / EfficientNetV2-B0 | Zero-shot (large) vs trained (small), routed by box size |
+| Pose Estimation | YOLO26m-pose | Precise head/torso crop localization for SigLIP |
+| State Management | Hysteresis FSM + Classify Lock | Alert fatigue suppression, GPU load reduction |
+| Compliance Reporting | Groq LLM + RAG ChromaDB | Regulation-cited daily reports |
 
 ### 1.1 Core AI Pipeline
 
@@ -22,95 +29,88 @@ The platform is designed around a microservices architecture, exposing a scalabl
 
 To mitigate domain shift between varying camera angles (aerial vs. close-circuit), the system implements a dual-YOLO ensemble alongside a dedicated pose estimator:
 
-* **Primary Detector:** YOLO11s fine-tuned on VisDrone for dense, small-scale pedestrian representations.
-* **Secondary Detector:** COCO-pretrained `yolo26l.pt` for high-fidelity close-range features.
-* **Pose Estimator:** `yolo26m-pose.pt` runs in parallel to extract 17 COCO body keypoints per person, updated every 9 frames to balance accuracy and throughput.
-* **Fusion & Tracking:** Detections are fused using Weighted Boxes Fusion (WBF) to suppress redundant overlaps. Temporal continuity is maintained via ByteTrack coupled with a Box Exponential Moving Average (EMA) to eliminate spatial jittering.
+* **Primary Detector:** YOLO11s fine-tuned on VisDrone for dense, small-scale pedestrian detection.
+* **Secondary Detector:** COCO-pretrained `yolo26l.pt` for high-fidelity close-range detection.
+* **Fusion & Tracking:** Detections are fused via Weighted Boxes Fusion (WBF, weights=[2,1]) to suppress redundant overlaps. ByteTrack assigns stable tracker IDs across frames, coupled with Box EMA (α=0.6) to eliminate spatial jittering.
 
 **Zone-Based Spatial Filtering**
 
-Before classification, detections are filtered through a user-defined polygon zone. Each person's foot-point (bottom-center of bounding box) is tested against the polygon via `cv2.pointPolygonTest`. Only persons whose foot-point falls inside the zone are passed downstream for PPE classification — eliminating irrelevant detections outside the monitored area.
+Before classification, detections are filtered through a user-defined polygon zone. Each person's foot-point (bottom-center of bounding box) is tested via `cv2.pointPolygonTest`. Only persons inside the zone are passed downstream — eliminating irrelevant detections from background areas.
 
-**Stage 2: Pose-Guided PPE Classification**
+**Stage 2: Classify Lock FSM**
 
-Rather than cropping a fixed percentage of the bounding box, the system uses pose keypoints to precisely locate the region of interest before feeding it to the classifier:
+To reduce redundant GPU inference, each tracker follows a three-state lifecycle:
 
-* **Hardhat crop:** Head keypoints (nose, eyes, ears — COCO indices 0–4) define the crop region.
-* **Vest crop:** Torso keypoints (shoulders, hips — COCO indices 5, 6, 11, 12) define the crop region.
-* **Fallback:** If pose confidence is below threshold, the system falls back to a fixed percentage crop (top 40% for hardhat, 20–80% for vest).
+* **ACTIVE (0–20s):** Classify every detection frame. Requires 3 consecutive stable verdicts before locking.
+* **LOCKED (20–65s):** Cached verdict is reused. Inference is skipped entirely.
+* **FORCE RECHECK:** Triggered after 20s of lock age, or when verdict confidence drops below threshold.
 
-Each crop is independently classified by **EfficientNetV2-B0** in a single batched forward pass. To ensure interpretability and suppress False Positives (e.g., misclassifying gray fabric as hardhats), the system implements a **Dual Forward-CAM** — one CAM head per class (hardhat and vest) — intercepting the `timm` feature extraction layer.
+**Stage 3: Pose-Guided PPE Classification**
+
+Classification is routed by bounding box size:
+
+* **Small boxes (min side < 110px) → EfficientNetV2-B0:** Full-body crop with 10% padding. Trained on processed Ultralytics PPE dataset (F1=0.92). Lightweight and fast for distant detections.
+
+* **Large boxes (min side ≥ 110px) → SigLIP SO400M:** Zero-shot classification using text prompts. YOLO26m-pose runs every 9 frames to extract COCO keypoints and define precise crop regions:
+  * **Hardhat crop:** Head keypoints (nose, eyes, ears — indices 0–4), pad 45%.
+  * **Vest crop:** Torso keypoints (shoulders, hips — indices 5, 6, 11, 12), pad 25%.
+  * **Fallback:** Fixed-percentage crop (top 42% for head, 20–85% for torso) when pose confidence is insufficient.
+
+  After SigLIP inference, **HSV Color Priors** post-process the hardhat probability:
+  * White pixel ratio (S≤58, V≥148) in head ROI → +0.12 boost
+  * Bright pixel ratio (white ∪ yellow) → +0.10 boost
+  * Dark pixel ratio (V≤72, ratio≥22%) → −0.14 penalty
 
 **HuggingFace Spaces demo:** [![HuggingFace Spaces](https://img.shields.io/badge/🤗-Live%20Demo-yellow)](https://huggingface.co/spaces/Nhatminh1234/ppe-classifier)
 
-![Forward-CAM Demo](docs/forward_cam_demo.gif)
-> **Left:** Without CAM — gray hardhat misclassified (WARN).
-> **Right:** With CAM + HSV Penalizer — correctly identified as missing (MISS HARD).
-
-The activated spatial regions are subjected to a **Dual-Channel HSV Color Penalizer**:
-
-* **Value (Brightness) Penalty:** Regions with $V < 70$ receive a probability penalty (filtering dark hair/shadows).
-* **Saturation Penalty:** Regions with $S < 80$ receive a small penalty (filtering gray concrete/clothing).
-
 ### 1.2 State Management & Observability
 
-To prevent alert fatigue and database spamming caused by transient model uncertainty:
-
-* **Hysteresis Finite State Machine (FSM):** Controls state transitions (SAFE → WARN → VIOLATION) with strict hysteresis margins to prevent oscillation.
-* **Temporal Accumulation:** A violation must be sustained for a configurable duration before triggering an event.
-* **Violation Cooldown:** Once a tracker ID is reported, a 5-minute cooldown prevents re-reporting the same person unless new violation types are detected.
-* **Idempotent Event Logging:** Once validated, the violation is logged asynchronously (Fire-and-Forget ThreadPool) to a **Supabase PostgreSQL** instance using a flexible `JSONB` schema, accompanied by a localized crop image blob for manual auditing.
-* **Instant Telegram Alert:** Each confirmed violation dispatches an immediate Telegram notification with the crop image attached.
+* **Hysteresis FSM:** Controls SAFE → WARN → VIOLATION transitions with strict margins to prevent oscillation.
+* **Temporal Accumulation:** A violation must be sustained for 3 seconds before triggering an event.
+* **Single-Item Cache:** When only 1 of 2 PPE items is missing, the system waits 10 seconds before reporting — filtering transient detections. If both items are missing (escalation), reporting is immediate.
+* **Violation Cooldown:** A 5-minute cooldown per tracker ID prevents duplicate reports. New violation types within the cooldown window are reported immediately.
+* **Idempotent Event Logging:** Violations are logged asynchronously (Fire-and-Forget ThreadPool) to Supabase PostgreSQL with a JSONB schema, alongside a localized crop image for manual auditing.
+* **Instant Telegram Alert:** Each confirmed violation dispatches a Telegram notification with the crop image attached, in parallel with the Supabase insert.
 
 ### 1.3 Multi-Camera Architecture
 
-The system supports simultaneous inference across an arbitrary number of camera sources via a **CameraRegistry** pattern:
-
-* Each camera is registered dynamically and assigned a unique `cam_id` and `session_id`.
-* Every camera spawns its own **dedicated inference thread** with isolated tracker, EMA, and FSM state — cameras are fully independent.
-* A **producer-consumer pipeline** decouples frame I/O from GPU inference: the main thread reads frames into a bounded queue while the inference thread drains it continuously, eliminating GPU idle time.
-* Streams are served individually at `/video_feed/{cam_id}` and composited into a responsive grid view in the UI.
-* **Zone polygons** are stored per-camera and persist across stream restarts within a session.
+* Each camera is registered dynamically via **CameraRegistry** and assigned a unique `cam_id` and `session_id`.
+* Every camera spawns a dedicated **inference thread** with isolated tracker, EMA, FSM, and classify lock state.
+* A **producer-consumer pipeline** decouples frame I/O from GPU inference via bounded queues, eliminating GPU idle time.
+* Streams are served at `/video_feed/{cam_id}` and composited into a responsive grid in the UI.
+* **Zone polygons** are stored per-camera and persist across stream restarts.
 
 ---
 
 ## 2. Infrastructure
 
-The infrastructure follows GitOps principles, ensuring the inference environment is fully version-controlled, reproducible, and seamlessly integrated with model training lifecycles.
-
-* **Artifact Fetching:** The API dynamically fetches versioned `.pt` artifacts directly from the MLflow DagsHub Registry via uniquely identifiable `run_id`s, utilizing a local cache collision-avoidance mechanism.
-* **GPU Acceleration:** All inference runs on CUDA via PyTorch. Models are warmed up at startup to avoid first-frame latency spikes. YOLO models are initialized with explicit `device=` to prevent CPU fallback.
-* **Containerization:** The monolithic engine is packaged in a Docker image. Deployment via `docker-compose.yml` mounts persistent volumes for model cache and blob storage, enabling hardware-accelerated NVIDIA GPU passthrough.
-* **Continuous Integration (CI):** GitHub Actions strictly governs the repository. The pipeline automatically provisions a mock environment and executes `pytest` using `unittest.mock` to validate API logic and endpoint integrity prior to Docker registry pushes.
+* **Artifact Fetching:** YOLO11s weights and EfficientNetV2-B0 weights are fetched from the MLflow DagsHub Registry via `run_id`, with local cache collision-avoidance. SigLIP SO400M is loaded via `open_clip` at startup.
+* **GPU Acceleration:** All inference runs on CUDA. Models are warmed up at startup to avoid first-frame latency spikes. YOLO models use explicit `device=` parameters to prevent CPU fallback.
+* **Containerization:** The engine is packaged as a Docker image. `docker-compose.yml` mounts persistent volumes for model cache and blob storage with NVIDIA GPU passthrough.
+* **Continuous Integration:** GitHub Actions provisions a mock environment and executes `pytest` with `unittest.mock` before each Docker registry push.
 
 ---
 
 ## 3. Automated Reporting & Compliance Intelligence
 
-### LLM Daily Report Service
+An automated reporting pipeline runs daily at 23:00 ICT via GitHub Actions cron.
 
-An automated reporting pipeline runs daily at 23:00 ICT via GitHub Actions, pulling violation logs from Supabase, generating a narrative safety report via Groq (Llama 3.3 70B), and dispatching to Telegram.
+**Pipeline:** Pull violation logs from Supabase → RAG lookup on Thông tư 25/2022 → Groq LLM generates narrative → dispatch to Telegram + save to Supabase.
 
-**RAG-Augmented Regulation Context**
+**RAG Layer:** The knowledge base indexes 229 pages of Thông tư 25/2022/TT-BLĐTBXH (428 chunks) into ChromaDB using `paraphrase-multilingual-MiniLM-L12-v2` embeddings. Violation types detected automatically generate Vietnamese queries, retrieve top-k regulation chunks, and inject them as grounded context into the Groq prompt.
 
-To ground report recommendations in actual Vietnamese labor law, the pipeline implements a Retrieval-Augmented Generation (RAG) layer:
-
-* **Knowledge Base:** Thong tu 25/2022/TT-BLDTBXH — Ministry of Labor regulations on mandatory PPE by occupation (229 pages, 428 indexed chunks).
-* **Embedding:** `paraphrase-multilingual-MiniLM-L12-v2` via ChromaDB with cosine similarity indexing.
-* **Pipeline:** Violation types detected → auto-generated Vietnamese queries → top-k chunk retrieval → injected into Groq prompt as grounded context.
-
-**Result:** Daily reports cite specific regulation articles and Phu luc I entries rather than generic safety advice.
+**Result:** Daily reports cite specific Điều numbers and Phụ lục I page entries rather than generic safety advice.
 
 | Component | Technology |
 |---|---|
 | LLM | Groq API (Llama 3.3 70B) |
 | Vector Store | ChromaDB (persistent, cosine) |
-| Embedding Model | sentence-transformers MiniLM-L12 |
+| Embedding Model | paraphrase-multilingual-MiniLM-L12 |
 | Scheduler | GitHub Actions cron (16:00 UTC) |
 | Notification | Telegram Bot API |
 | Storage | Supabase `daily_reports` table |
 
-**Daily Report database (Supabase):**
+**Daily Report (Supabase):**
 ![Daily Report Supabase](docs/Daily_report_supabase.png)
 
 **Telegram Report:**
@@ -126,39 +126,33 @@ To ground report recommendations in actual Vietnamese labor law, the pipeline im
 |---|---|---|---|---|
 | YOLO11s (fine-tuned) | 0.760 | 0.611 | 0.684 | 45.8 |
 | YOLO26l (pretrained) | 0.590 | 0.356 | 0.418 | 22.3 |
-| YOLO26m-pose (pretrained) | — | — | — | ~18* |
-| **WBF Ensemble** | **0.556** | **0.764** | — | ~18** |
+| **WBF Ensemble** | **0.556** | **0.764** | — | ~18* |
 
-\* Pose model runs every 9 frames (POSE_EVERY=9); FPS represents average amortized cost.
-\*\* End-to-end pipeline throughput with producer-consumer threading on NVIDIA RTX 5070.
+*End-to-end throughput with pose model (POSE_EVERY=9) on NVIDIA RTX 5070.
 
-> Ensemble design rationale: Higher recall (0.764 vs 0.611) prioritizes zero missed violations.
-> Residual false positives are suppressed downstream by EfficientNetV2 + Dual Forward-CAM.
+> Ensemble rationale: Higher recall (0.764 vs 0.611) prioritizes zero missed violations. Residual false positives are suppressed downstream by the classification stage.
 
 ### Stage 2: PPE Classifier (Ultralytics PPE dataset)
 
-| Model | Precision | Recall | F1 | FPS |
+| Model | Precision | Recall | F1 | Notes |
 |---|---|---|---|---|
-| EfficientNetV2-B0 | 0.97 | 0.88 | 0.92 | 39.1 |
+| EfficientNetV2-B0 | 0.97 | 0.88 | 0.92 | Trained, handles small boxes |
+| SigLIP SO400M | — | — | — | Zero-shot, handles large boxes |
 
-> Benchmarked on NVIDIA RTX 5070 Laptop GPU, PyTorch 2.10, CUDA 12.8.
-> Pose-guided crop strategy reduces false negatives on vest detection compared to fixed-percentage cropping.
+> EfficientNetV2-B0 benchmarked on NVIDIA RTX 5070, PyTorch 2.10, CUDA 12.8.
 
-### ONNX Export & CPU Optimization
-
-EfficientNetV2-B0 exported to ONNX for cross-platform deployment.
+### ONNX Export (EfficientNetV2-B0, CPU deployment)
 
 | Format | Latency | Throughput | Size |
 |---|---|---|---|
 | PyTorch (CPU) | ~45 ms | ~22 FPS | 22.4 MB |
 | ONNX FP32 (CPU) | 7.46 ms | 134 FPS | 22.4 MB |
 
-> ONNX Runtime graph optimization yields ~6x speedup on CPU inference.
-> Model artifact: [MLflow Run](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow)
+> ~6x speedup via ONNX Runtime graph optimization. Model artifact: [MLflow Run](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow)
 
 ### LLM Report Quality
 
-The daily report narrative is evaluated across 10 synthetic violation scenarios covering edge cases (night shift, repeat offenders, low confidence detections, mass violations). Evaluation performed via LLM-as-judge (Gemini 2.5 Pro).
+Evaluated across 10 synthetic violation scenarios via LLM-as-judge (Gemini 3.1 Pro).
 
 | Criterion | Score |
 |---|---|
@@ -219,9 +213,8 @@ https://github.com/user-attachments/assets/7d18e0cb-dba9-4d97-8319-41e1005efcc8
     docker-compose up --build -d
     ```
 
-3. **Access Telemetry:**
-    * **Dashboard SPA:** `http://localhost:8000/`
-    * **Single Camera Feed:** `http://localhost:8000/video_feed`
+3. **Access:**
+    * **Dashboard:** `http://localhost:8000/`
     * **Per-Camera Feed:** `http://localhost:8000/video_feed/{cam_id}`
     * **Audit Logs:** `http://localhost:8000/api/violations`
     * **Camera Registry:** `http://localhost:8000/api/cameras`
@@ -231,14 +224,13 @@ https://github.com/user-attachments/assets/7d18e0cb-dba9-4d97-8319-41e1005efcc8
 ```bash
 # Add cameras via API
 curl -X POST "http://localhost:8000/api/cameras/add_webcam?camera_index=0&label=Zone+A"
-curl -X POST "http://localhost:8000/api/cameras/add_webcam?camera_index=1&label=Zone+B"
 curl -X POST "http://localhost:8000/api/cameras/add_rtsp?url=rtsp://...&label=Gate+Camera"
 
 # List active cameras
 curl "http://localhost:8000/api/cameras"
 ```
 
-Or use the dashboard UI: **Add** button → select Webcam or RTSP → assign label.
+Or use the dashboard UI: **Add** → select Webcam or RTSP → assign label.
 
 ### Zone Definition
 
@@ -259,14 +251,14 @@ docker-compose up -d
 
 ---
 
-## 6. Future Roadmap: Closed-Loop MLOps
+## 6. Future Roadmap
 
-* **Infrastructure as Code (IaC) & Continuous Deployment (CD):** Transitioning from local Docker Compose to automated cloud provisioning on **AWS EC2** via **Terraform**, with zero-downtime immutable container deployments.
-* **Data Drift Observability:** Implementing multivariate statistical hypothesis testing (Population Stability Index — PSI) on incoming video streams to monitor for covariate shift (lighting changes, new camera angles, seasonal variation).
-* **Continuous Training (CT):** An automated feedback loop where verified data drift triggers retraining via GitHub Webhooks, updates the MLflow Model Registry, and promotes new weights to production without human intervention.
+* **IaC & Continuous Deployment:** Transition from Docker Compose to automated cloud provisioning on AWS EC2 via Terraform, with zero-downtime immutable container deployments.
+* **Data Drift Observability:** Population Stability Index (PSI) monitoring on incoming video streams to detect covariate shift (lighting, new camera angles, seasonal variation).
+* **Continuous Training:** Automated feedback loop — verified data drift triggers retraining via GitHub Webhooks, updates the MLflow Model Registry, and promotes new weights to production without human intervention.
 
 ---
 
-## 7. Related Work & Portfolio
+## 7. Related Work
 
-* **[Cali Housing MLOps: From Manual to GitOps Architecture](https://github.com/nhatminh-115/cali-housing-mlops)** — foundational IaC and GitOps pipelines (Terraform, AWS EC2, closed-loop CT) planned for the Future Roadmap above.
+* **[Cali Housing MLOps: From Manual to GitOps Architecture](https://github.com/nhatminh-115/cali-housing-mlops)** — IaC and GitOps pipelines (Terraform, AWS EC2, closed-loop CT) forming the foundation for the roadmap above.
