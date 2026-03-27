@@ -9,7 +9,7 @@ from src.config import (
     CONF_M1, CONF_M2, IOU_NMS, DETECT_EVERY, BOX_EMA_ALPHA,
     CLASSIFY_ACTIVE_SEC, CLASSIFY_COOLDOWN_SEC,
     CLASSIFY_FORCE_RECHECK_SEC, CLASSIFY_UNCERTAIN_MARGIN,
-    CLIP_LOCK_MIN_CONF, PPE_THRESHOLDS,
+    SIGLIP_LOCK_MIN_CONF, PPE_THRESHOLDS,
     CLASSIFY_LOCK_MIN_CONSISTENT,
 )
 from src.inference import (
@@ -40,7 +40,7 @@ def _is_verdict_stable(verdict: dict | None) -> bool:
         return False
 
     model_name = str(verdict.get("router_model", "")).lower()
-    min_certainty = float(CLIP_LOCK_MIN_CONF) if model_name == "clip" else 0.72
+    min_certainty = float(SIGLIP_LOCK_MIN_CONF) if model_name in ("siglip", "clip") else 0.72
 
     for i, label in enumerate(("hardhat", "vest")):
         p = float(probs[i])

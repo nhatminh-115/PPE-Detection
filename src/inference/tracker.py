@@ -4,7 +4,7 @@ import logging
 from src.config import (
     LABEL_COLS, PPE_THRESHOLDS, HYSTERESIS_MARGIN,
     USE_EMA, EMA_ALPHA, ALERT_TIME_THRESHOLD,
-    GRACE_PERIOD_SEC, STATE_COLORS, COLOR_TRACK,
+    GRACE_PERIOD_SEC, STATE_COLORS, COLOR_TRACK,VIOLATION_COOLDOWN_SEC, SINGLE_ITEM_CACHE_SEC
 )
 from src.infrastructure.supabase import log_violation_to_supabase, db_executor
 
@@ -20,9 +20,6 @@ logger = logging.getLogger(__name__)
 # }}
 # ---------------------------------------------------------------------------
 reported_violations: dict = {}
-
-VIOLATION_COOLDOWN_SEC = 300.0  # 5 minutes before re-reporting same tracker
-SINGLE_ITEM_CACHE_SEC = 10.0    # Cache timeout for single missing item (short time)
 
 
 class StreamState:

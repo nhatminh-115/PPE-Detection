@@ -1,6 +1,5 @@
 import logging
 import os
-import glob
 import warnings
 import io
 from contextlib import nullcontext, redirect_stderr, redirect_stdout
@@ -14,9 +13,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from ultralytics import YOLO
 from src.config import (
-    CLIP_MODEL_NAME, CLIP_PRETRAINED, CLIP_PROMPTS,
+    SIGLIP_MODEL_NAME, SIGLIP_PRETRAINED, SIGLIP_PROMPTS,
     IMG_SIZE, NUM_CLASSES,
-    EFFNET_VARIANT, EFFNET_WEIGHTS_PATH,
+    EFFNET_RUN_ID, EFFNET_ARTIFACT_PATH, EFFNET_LOCAL_FALLBACK_PATH,
     MLFLOW_RUN_ID, MLFLOW_ARTIFACT_PATH,
     MODEL2_PATH, MODEL_POSE_PATH,
     INFERENCE_THREAD_WORKERS,
@@ -109,37 +108,37 @@ model_pose.predict(dummy, device=device, verbose=False)
 
 
 # ---------------------------------------------------------------------------
-# CLIP model + text features
+# SigLIP model + text features
 # ---------------------------------------------------------------------------
 
-logger.info(f"Loading CLIP {CLIP_MODEL_NAME} ({CLIP_PRETRAINED})...")
+logger.info(f"Loading SigLIP {SIGLIP_MODEL_NAME} ({SIGLIP_PRETRAINED})...")
 stdout_ctx, stderr_ctx = _quiet_startup_contexts()
 with stdout_ctx, stderr_ctx:
-    clip_model, _, clip_preprocess = open_clip.create_model_and_transforms(
-        CLIP_MODEL_NAME, pretrained=CLIP_PRETRAINED,
+    siglip_model, _, siglip_preprocess = open_clip.create_model_and_transforms(
+        SIGLIP_MODEL_NAME, pretrained=SIGLIP_PRETRAINED,
     )
-clip_model.eval().to(device)
+siglip_model.eval().to(device)
 
 # Pre-compute text embeddings (once at startup)
 stdout_ctx, stderr_ctx = _quiet_startup_contexts()
 with stdout_ctx, stderr_ctx:
-    tokenizer = open_clip.get_tokenizer(CLIP_MODEL_NAME)
-clip_text_features = {}
+    tokenizer = open_clip.get_tokenizer(SIGLIP_MODEL_NAME)
+siglip_text_features = {}
 
 with torch.no_grad():
-    for category, prompts in CLIP_PROMPTS.items():
+    for category, prompts in SIGLIP_PROMPTS.items():
         pos_tokens = tokenizer(prompts['positive']).to(device)
         neg_tokens = tokenizer(prompts['negative']).to(device)
-        pos_feat = clip_model.encode_text(pos_tokens).mean(dim=0)
-        neg_feat = clip_model.encode_text(neg_tokens).mean(dim=0)
+        pos_feat = siglip_model.encode_text(pos_tokens).mean(dim=0)
+        neg_feat = siglip_model.encode_text(neg_tokens).mean(dim=0)
         pos_feat = pos_feat / pos_feat.norm()
         neg_feat = neg_feat / neg_feat.norm()
-        clip_text_features[category] = torch.stack([pos_feat, neg_feat])
+        siglip_text_features[category] = torch.stack([pos_feat, neg_feat])
 
 # Warmup
 with torch.no_grad():
-    clip_model.encode_image(torch.zeros(1, 3, 224, 224).to(device))
-logger.info("CLIP model ready.")
+    siglip_model.encode_image(torch.zeros(1, 3, 224, 224).to(device))
+logger.info("SigLIP model ready.")
 
 effnet_preprocess = transforms.Compose([
     transforms.Resize((IMG_SIZE, IMG_SIZE)),
@@ -149,27 +148,14 @@ effnet_preprocess = transforms.Compose([
 
 
 def _load_effnet_bundle():
-    base_candidates = [
-        "best_stage2_effnet.pt",
-        *sorted(glob.glob("model_cache/*best_stage2_effnet.pt")),
+    effnet_mlflow_path = pull_artifact_from_mlflow_run(
+        run_id=EFFNET_RUN_ID,
+        artifact_path=EFFNET_ARTIFACT_PATH,
+    )
+    candidates = [
+        effnet_mlflow_path,
+        EFFNET_LOCAL_FALLBACK_PATH,
     ]
-    attention_candidates = [
-        "best_stage2_effnet_attention.pt",
-        *sorted(glob.glob("model_cache/*best_stage2_effnet_attention.pt")),
-    ]
-
-    if EFFNET_WEIGHTS_PATH:
-        candidates = [EFFNET_WEIGHTS_PATH]
-        logger.info(f"EffNet selection mode: explicit path ({EFFNET_WEIGHTS_PATH})")
-    elif EFFNET_VARIANT == "base":
-        candidates = base_candidates
-        logger.info("EffNet selection mode: base")
-    elif EFFNET_VARIANT == "attention":
-        candidates = attention_candidates
-        logger.info("EffNet selection mode: attention")
-    else:
-        candidates = base_candidates + attention_candidates
-        logger.info("EffNet selection mode: auto")
 
     for path in candidates:
         if not os.path.exists(path):
@@ -206,16 +192,16 @@ def _load_effnet_bundle():
         except Exception as ex:
             logger.warning(f"EffNet load failed for {path}: {ex}")
 
-    logger.warning("No compatible EffNet stage-2 weights found. Router will fall back to CLIP.")
+    logger.warning("No compatible EffNet stage-2 weights found. Router will fall back to SigLIP.")
     return None
 
 
 # Bundle for classifier
 model_stage2 = {
-    "clip": {
-        "model": clip_model,
-        "preprocess": clip_preprocess,
-        "text_features": clip_text_features,
+    "siglip": {
+        "model": siglip_model,
+        "preprocess": siglip_preprocess,
+        "text_features": siglip_text_features,
     },
     "effnet": _load_effnet_bundle(),
 }

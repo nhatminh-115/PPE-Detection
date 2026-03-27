@@ -304,15 +304,31 @@ def toggle_cam_mode(enabled: bool = True):
     return {"status": "success", "cam_mode": enabled}
 
 
+@app.get("/api/siglip_pose")
+def get_siglip_pose_mode():
+    enabled = bool(_clf.siglip_use_pose)
+    return {"siglip_use_pose": enabled, "clip_use_pose": enabled}
+
+
+@app.post("/api/siglip_pose")
+def set_siglip_pose_mode(enabled: bool = True):
+    _clf.siglip_use_pose = bool(enabled)
+    return {
+        "status": "success",
+        "siglip_use_pose": bool(_clf.siglip_use_pose),
+        "clip_use_pose": bool(_clf.siglip_use_pose),
+    }
+
+
+# Backward-compatible aliases.
 @app.get("/api/clip_pose")
 def get_clip_pose_mode():
-    return {"clip_use_pose": bool(_clf.clip_use_pose)}
+    return get_siglip_pose_mode()
 
 
 @app.post("/api/clip_pose")
 def set_clip_pose_mode(enabled: bool = True):
-    _clf.clip_use_pose = bool(enabled)
-    return {"status": "success", "clip_use_pose": bool(_clf.clip_use_pose)}
+    return set_siglip_pose_mode(enabled)
 
 
 # ---------------------------------------------------------------------------

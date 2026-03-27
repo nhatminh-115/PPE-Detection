@@ -13,6 +13,7 @@ services:
       - ./model_cache:/app/model_cache
       - ./violation_crops:/app/violation_crops
       - ./temp_uploads:/app/temp_uploads
+      - clip_model_cache:/root/.cache/huggingface
     deploy:
       resources:
         reservations:

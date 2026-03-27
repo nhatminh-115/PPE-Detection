@@ -16,8 +16,9 @@ MLFLOW_RUN_ID        = "b52f0641a3fe41899bb4c620fdef053d"
 MLFLOW_ARTIFACT_PATH = "weights/best.pt"
 MODEL2_PATH          = "yolo26l.pt"
 MODEL_POSE_PATH      = "yolo26m-pose.pt"
-EFFNET_VARIANT       = "auto"   # auto | base | attention
-EFFNET_WEIGHTS_PATH  = ""       # override explicit path; empty = auto-discover
+EFFNET_RUN_ID        = "e44391ef94b54ce3b867d46b7ce33ec3"
+EFFNET_ARTIFACT_PATH = "weights/best_stage2_effnet.pt"
+EFFNET_LOCAL_FALLBACK_PATH = "best_stage2_effnet.pt"
 
 # ---------------------------------------------------------------------------
 # Detection
@@ -59,13 +60,15 @@ PPE_THRESHOLDS = {
 # Classification strategy  (detect → lock → cooldown)
 # ---------------------------------------------------------------------------
 ROUTER_MIN_SIDE_PX           = 110
-CLIP_USE_POSE                = True
+SIGLIP_USE_POSE              = True
 CLASSIFY_ACTIVE_SEC          = 20.0
 CLASSIFY_COOLDOWN_SEC        = 45.0
 CLASSIFY_FORCE_RECHECK_SEC   = 20.0
 CLASSIFY_UNCERTAIN_MARGIN    = 0.08
-CLIP_LOCK_MIN_CONF           = 0.82
+SIGLIP_LOCK_MIN_CONF         = 0.82
 CLASSIFY_LOCK_MIN_CONSISTENT = 3
+VIOLATION_COOLDOWN_SEC       = 300.0  # 5 minutes before re-reporting same tracker
+SINGLE_ITEM_CACHE_SEC        = 10.0    # Cache timeout for single missing item (short time)
 
 # ---------------------------------------------------------------------------
 # Hardhat visibility gate
@@ -98,11 +101,11 @@ DARK_HEAD_MIN_RATIO    = 0.22
 DARK_HEAD_PROB_PENALTY = 0.14
 
 # ---------------------------------------------------------------------------
-# CLIP zero-shot model + prompts
+# SigLIP zero-shot model + prompts
 # ---------------------------------------------------------------------------
-CLIP_MODEL_NAME = 'ViT-SO400M-14-SigLIP'
-CLIP_PRETRAINED = 'webli'
-CLIP_PROMPTS = {
+SIGLIP_MODEL_NAME = 'ViT-SO400M-14-SigLIP'
+SIGLIP_PRETRAINED = 'webli'
+SIGLIP_PROMPTS = {
     'hardhat': {
         'positive': [
             'a construction worker wearing a hard hat',

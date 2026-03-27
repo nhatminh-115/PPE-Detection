@@ -1,8 +1,8 @@
 """
-PPE Classifier — CLIP Zero-Shot.
+PPE Classifier - SigLIP Zero-Shot.
 
-Replaces EfficientNetV2-B0 with CLIP ViT-B/32 zero-shot classification.
-Full-body crop → CLIP image embedding → cosine similarity with text prompts
+Replaces EfficientNetV2-B0 with SigLIP zero-shot classification.
+Full-body crop -> SigLIP image embedding -> cosine similarity with text prompts
 → softmax → P(hardhat), P(vest).
 """
 
@@ -12,7 +12,7 @@ import numpy as np
 from PIL import Image
 from src.config import (
     ROUTER_MIN_SIDE_PX,
-    CLIP_USE_POSE,
+    SIGLIP_USE_POSE,
     HARDHAT_VIS_MIN_SIDE,
     HARDHAT_VIS_MIN_BRIGHT,
     HARDHAT_VIS_MIN_SHARP,
@@ -38,7 +38,7 @@ from src.config import (
 # Global flag — toggled via /api/cam_mode endpoint (kept for API compat, no-op)
 cam_mode_enabled: bool = False
 router_min_side_px: float = float(ROUTER_MIN_SIDE_PX)
-clip_use_pose: bool = bool(CLIP_USE_POSE)
+siglip_use_pose: bool = bool(SIGLIP_USE_POSE)
 
 _KP_CONF_THR = 0.30
 _HEAD_KPS = [0, 1, 2, 3, 4]
@@ -52,8 +52,10 @@ def has_effnet_model(model_stage2) -> bool:
     return isinstance(effnet_bundle, dict) and effnet_bundle.get("model") is not None
 
 
-def _get_clip_bundle(model_stage2):
-    # Backward compatibility: accept either plain CLIP bundle or hybrid dict.
+def _get_siglip_bundle(model_stage2):
+    # Backward compatibility: accept either plain SigLIP bundle or legacy CLIP key.
+    if isinstance(model_stage2, dict) and "siglip" in model_stage2:
+        return model_stage2["siglip"]
     if isinstance(model_stage2, dict) and "clip" in model_stage2:
         return model_stage2["clip"]
     return model_stage2
@@ -69,16 +71,16 @@ def _compute_router_indices(model_stage2, boxes_np: np.ndarray):
         use_effnet_mask = np.zeros_like(use_effnet_mask, dtype=bool)
 
     effnet_idx = np.where(use_effnet_mask)[0].tolist()
-    clip_idx = np.where(~use_effnet_mask)[0].tolist()
-    return effnet_idx, clip_idx
+    siglip_idx = np.where(~use_effnet_mask)[0].tolist()
+    return effnet_idx, siglip_idx
 
 
 def should_run_pose_for_boxes(model_stage2, boxes) -> bool:
-    if not clip_use_pose or boxes is None or len(boxes) == 0:
+    if not siglip_use_pose or boxes is None or len(boxes) == 0:
         return False
     boxes_np = np.asarray(boxes, dtype=np.float32)
-    _, clip_idx = _compute_router_indices(model_stage2, boxes_np)
-    return len(clip_idx) > 0
+    _, siglip_idx = _compute_router_indices(model_stage2, boxes_np)
+    return len(siglip_idx) > 0
 
 
 def _match_pose_to_box(box, pose_results):
@@ -284,24 +286,24 @@ def _estimate_dark_head_ratio(head_crop):
     return float(dark_mask.mean())
 
 
-def _draw_clip_focus_overlay(frame, head_rect, torso_rect, visibility_low=False):
+def _draw_siglip_focus_overlay(frame, head_rect, torso_rect, visibility_low=False):
     if head_rect is not None:
         x1, y1, x2, y2 = head_rect
         color = (0, 165, 255) if visibility_low else (56, 139, 253)
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1)
-        tag = "CLIP HEAD" if not visibility_low else "CLIP HEAD LOW-VIS"
+        tag = "SIGLIP HEAD" if not visibility_low else "SIGLIP HEAD LOW-VIS"
         cv2.putText(frame, tag, (x1, max(10, y1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1, cv2.LINE_AA)
     if torso_rect is not None:
         x1, y1, x2, y2 = torso_rect
         color = (80, 220, 120)
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1)
-        cv2.putText(frame, "CLIP TORSO", (x1, max(10, y1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1, cv2.LINE_AA)
+        cv2.putText(frame, "SIGLIP TORSO", (x1, max(10, y1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1, cv2.LINE_AA)
 
 
-def _classify_clip_batch(clip_bundle, frame, boxes, device, pose_results=None):
-    model = clip_bundle["model"]
-    preprocess = clip_bundle["preprocess"]
-    text_feats = clip_bundle["text_features"]
+def _classify_siglip_batch(siglip_bundle, frame, boxes, device, pose_results=None):
+    model = siglip_bundle["model"]
+    preprocess = siglip_bundle["preprocess"]
+    text_feats = siglip_bundle["text_features"]
 
     head_tensors = []
     torso_tensors = []
@@ -316,7 +318,7 @@ def _classify_clip_batch(clip_bundle, frame, boxes, device, pose_results=None):
 
         head_crop, head_rect = None, None
         torso_crop, torso_rect = None, None
-        if clip_use_pose and pose_results is not None:
+        if siglip_use_pose and pose_results is not None:
             kps = _match_pose_to_box(box, pose_results)
             if kps is not None:
                 head_crop, head_rect = _crop_from_kps(frame, kps, _HEAD_KPS, box, pad_ratio=0.45)
@@ -396,10 +398,10 @@ def _classify_clip_batch(clip_bundle, frame, boxes, device, pose_results=None):
             h_prob[j] = max(0.02, h_prob[j] - float(DARK_HEAD_PROB_PENALTY))
 
         if cam_mode_enabled:
-            _draw_clip_focus_overlay(frame, head_rect, torso_rect, visibility_low=quality.get("hardhat_visibility_low", False))
+            _draw_siglip_focus_overlay(frame, head_rect, torso_rect, visibility_low=quality.get("hardhat_visibility_low", False))
         results[idx] = {
             "probs": np.array([float(h_prob[j]), float(v_prob[j])], dtype=np.float32),
-            "router_model": "clip",
+            "router_model": "siglip",
             "quality": quality,
         }
     return results
@@ -473,15 +475,15 @@ def classify_ppe_batch(
     pose_results=None,
 ):
     """
-    CLIP zero-shot PPE classification on full-body crops.
+    SigLIP zero-shot PPE classification on full-body crops.
 
     Args:
-        clip_bundle: dict with keys "model", "preprocess", "text_features"
+        siglip_bundle: dict with keys "model", "preprocess", "text_features"
         frame: BGR numpy array
         boxes: [N, 4] xyxy bounding boxes
         device: torch device
-        tracker_ids: optional tracker IDs (unused by CLIP, kept for interface compat)
-        pose_results: optional pose results (unused by CLIP, kept for interface compat)
+        tracker_ids: optional tracker IDs (unused by SigLIP, kept for interface compat)
+        pose_results: optional pose results (unused by SigLIP, kept for interface compat)
 
     Returns:
         list of {"probs": np.array([hardhat_prob, vest_prob])} or None per box
@@ -489,11 +491,11 @@ def classify_ppe_batch(
     if boxes is None or len(boxes) == 0:
         return []
 
-    clip_bundle = _get_clip_bundle(model_stage2)
+    siglip_bundle = _get_siglip_bundle(model_stage2)
     effnet_bundle = model_stage2.get("effnet") if isinstance(model_stage2, dict) else None
 
     boxes_np = np.asarray(boxes, dtype=np.float32)
-    effnet_idx, clip_idx = _compute_router_indices(model_stage2, boxes_np)
+    effnet_idx, siglip_idx = _compute_router_indices(model_stage2, boxes_np)
 
     results = [None] * len(boxes)
 
@@ -503,10 +505,10 @@ def classify_ppe_batch(
         for local_i, global_i in enumerate(effnet_idx):
             results[global_i] = effnet_results[local_i]
 
-    if clip_idx:
-        clip_boxes = boxes_np[clip_idx]
-        clip_results = _classify_clip_batch(clip_bundle, frame, clip_boxes, device, pose_results=pose_results)
-        for local_i, global_i in enumerate(clip_idx):
-            results[global_i] = clip_results[local_i]
+    if siglip_idx:
+        siglip_boxes = boxes_np[siglip_idx]
+        siglip_results = _classify_siglip_batch(siglip_bundle, frame, siglip_boxes, device, pose_results=pose_results)
+        for local_i, global_i in enumerate(siglip_idx):
+            results[global_i] = siglip_results[local_i]
 
     return results
