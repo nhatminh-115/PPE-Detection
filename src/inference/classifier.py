@@ -21,6 +21,17 @@ from src.config import (
     WHITE_HARDHAT_VAL_MIN,
     WHITE_HARDHAT_MIN_RATIO,
     WHITE_HARDHAT_PROB_BOOST,
+    BRIGHT_HARDHAT_PRIOR_ENABLE,
+    BRIGHT_HARDHAT_MIN_RATIO,
+    BRIGHT_HARDHAT_PROB_BOOST,
+    YELLOW_HARDHAT_H_MIN,
+    YELLOW_HARDHAT_H_MAX,
+    YELLOW_HARDHAT_S_MIN,
+    YELLOW_HARDHAT_V_MIN,
+    DARK_HEAD_PRIOR_ENABLE,
+    DARK_HEAD_VAL_MAX,
+    DARK_HEAD_MIN_RATIO,
+    DARK_HEAD_PROB_PENALTY,
 )
 
 
@@ -231,6 +242,48 @@ def _estimate_white_hardhat_ratio(head_crop):
     return float(white_mask.mean())
 
 
+def _estimate_bright_hardhat_ratio(head_crop):
+    if head_crop is None or head_crop.size == 0:
+        return 0.0
+
+    h, w = head_crop.shape[:2]
+    top_h = max(1, int(h * 0.60))
+    roi = head_crop[:top_h, :]
+    if roi.size == 0:
+        return 0.0
+
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    hue = hsv[:, :, 0].astype(np.float32)
+    sat = hsv[:, :, 1].astype(np.float32)
+    val = hsv[:, :, 2].astype(np.float32)
+
+    white_mask = (sat <= float(WHITE_HARDHAT_SAT_MAX)) & (val >= float(WHITE_HARDHAT_VAL_MIN))
+    yellow_mask = (
+        (hue >= float(YELLOW_HARDHAT_H_MIN))
+        & (hue <= float(YELLOW_HARDHAT_H_MAX))
+        & (sat >= float(YELLOW_HARDHAT_S_MIN))
+        & (val >= float(YELLOW_HARDHAT_V_MIN))
+    )
+    bright_mask = white_mask | yellow_mask
+    return float(bright_mask.mean())
+
+
+def _estimate_dark_head_ratio(head_crop):
+    if head_crop is None or head_crop.size == 0:
+        return 0.0
+
+    h, w = head_crop.shape[:2]
+    top_h = max(1, int(h * 0.60))
+    roi = head_crop[:top_h, :]
+    if roi.size == 0:
+        return 0.0
+
+    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    val = hsv[:, :, 2].astype(np.float32)
+    dark_mask = val <= float(DARK_HEAD_VAL_MAX)
+    return float(dark_mask.mean())
+
+
 def _draw_clip_focus_overlay(frame, head_rect, torso_rect, visibility_low=False):
     if head_rect is not None:
         x1, y1, x2, y2 = head_rect
@@ -322,12 +375,25 @@ def _classify_clip_batch(clip_bundle, frame, boxes, device, pose_results=None):
             head_crop_for_prior = None
 
         white_ratio = _estimate_white_hardhat_ratio(head_crop_for_prior)
+        bright_ratio = _estimate_bright_hardhat_ratio(head_crop_for_prior)
+        dark_ratio = _estimate_dark_head_ratio(head_crop_for_prior)
         quality["white_hardhat_ratio"] = white_ratio
+        quality["bright_hardhat_ratio"] = bright_ratio
+        quality["dark_head_ratio"] = dark_ratio
 
+        # Backward-compatible white prior.
         if WHITE_HARDHAT_PRIOR_ENABLE and white_ratio >= float(WHITE_HARDHAT_MIN_RATIO):
-            # Boost only when CLIP is not already highly confident.
             if h_prob[j] < 0.90:
                 h_prob[j] = min(0.95, h_prob[j] + float(WHITE_HARDHAT_PROB_BOOST))
+
+        # New bright-head prior: reward bright helmet-like colors (white/yellow).
+        if BRIGHT_HARDHAT_PRIOR_ENABLE and bright_ratio >= float(BRIGHT_HARDHAT_MIN_RATIO):
+            if h_prob[j] < 0.90:
+                h_prob[j] = min(0.95, h_prob[j] + float(BRIGHT_HARDHAT_PROB_BOOST))
+
+        # New dark-head prior: penalize hardhat confidence when head region is mostly dark.
+        if DARK_HEAD_PRIOR_ENABLE and dark_ratio >= float(DARK_HEAD_MIN_RATIO):
+            h_prob[j] = max(0.02, h_prob[j] - float(DARK_HEAD_PROB_PENALTY))
 
         if cam_mode_enabled:
             _draw_clip_focus_overlay(frame, head_rect, torso_rect, visibility_low=quality.get("hardhat_visibility_low", False))

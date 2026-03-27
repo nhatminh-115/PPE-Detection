@@ -10,6 +10,7 @@ from src.config import (
     CLASSIFY_ACTIVE_SEC, CLASSIFY_COOLDOWN_SEC,
     CLASSIFY_FORCE_RECHECK_SEC, CLASSIFY_UNCERTAIN_MARGIN,
     CLIP_LOCK_MIN_CONF, PPE_THRESHOLDS,
+    CLASSIFY_LOCK_MIN_CONSISTENT,
 )
 from src.inference import (
     extract_boxes, fuse_boxes, WBF_AVAILABLE,
@@ -54,6 +55,46 @@ def _is_verdict_stable(verdict: dict | None) -> bool:
             return False
 
     return True
+
+
+def _verdict_signature(verdict: dict | None):
+    if not verdict or "probs" not in verdict:
+        return None
+    probs = verdict["probs"]
+    if probs is None or len(probs) < 2:
+        return None
+
+    states = []
+    for i, label in enumerate(("hardhat", "vest")):
+        p = float(probs[i])
+        th = PPE_THRESHOLDS[label]
+        if p >= float(th["ok"]):
+            states.append(2)
+        elif p >= float(th["warn"]):
+            states.append(1)
+        else:
+            states.append(0)
+
+    return (str(verdict.get("router_model", "")), states[0], states[1])
+
+
+def _update_lock_consensus(lock: dict, verdict: dict | None):
+    if not _is_verdict_stable(verdict):
+        lock["candidate_sig"] = None
+        lock["candidate_count"] = 0
+        return
+
+    sig = _verdict_signature(verdict)
+    if sig is None:
+        lock["candidate_sig"] = None
+        lock["candidate_count"] = 0
+        return
+
+    if lock.get("candidate_sig") == sig:
+        lock["candidate_count"] = int(lock.get("candidate_count", 0)) + 1
+    else:
+        lock["candidate_sig"] = sig
+        lock["candidate_count"] = 1
 
 
 # ---------------------------------------------------------------------------
@@ -234,12 +275,14 @@ def _inference_worker(cam_state: CameraState, frame_q: queue.Queue, result_q: qu
                         classify_lock[tid] = {
                             "state": "ACTIVE", "started": current_time,
                             "locked_at": 0.0, "verdict": None,
+                            "candidate_sig": None, "candidate_count": 0,
                         }
                     lock = classify_lock[tid]
 
                     if lock["state"] == "ACTIVE":
                         elapsed = current_time - lock["started"]
-                        if elapsed >= CLASSIFY_ACTIVE_SEC and lock["verdict"] is not None and _is_verdict_stable(lock["verdict"]):
+                        consensus_ready = int(lock.get("candidate_count", 0)) >= int(CLASSIFY_LOCK_MIN_CONSISTENT)
+                        if elapsed >= CLASSIFY_ACTIVE_SEC and consensus_ready and lock["verdict"] is not None and _is_verdict_stable(lock["verdict"]):
                             lock["state"] = "LOCKED"
                             lock["locked_at"] = current_time
                             raw_results[zi] = lock["verdict"]
@@ -255,6 +298,8 @@ def _inference_worker(cam_state: CameraState, frame_q: queue.Queue, result_q: qu
                             lock["state"] = "ACTIVE"
                             lock["started"] = current_time
                             lock["verdict"] = None
+                            lock["candidate_sig"] = None
+                            lock["candidate_count"] = 0
                             active_box_list.append(zone_boxes[j])
                             active_zone_map.append((j, zi))
                         else:
@@ -277,7 +322,9 @@ def _inference_worker(cam_state: CameraState, frame_q: queue.Queue, result_q: qu
                     )
                     for k, (j, zi) in enumerate(active_zone_map):
                         raw_results[zi] = active_raw[k]
-                        classify_lock[int(zone_tids[j])]["verdict"] = active_raw[k]
+                        lock_rec = classify_lock[int(zone_tids[j])]
+                        lock_rec["verdict"] = active_raw[k]
+                        _update_lock_consensus(lock_rec, active_raw[k])
 
                 ppe_results = update_ema_and_decide(
                     raw_results, tracked.tracker_id, tracked.xyxy,

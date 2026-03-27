@@ -1,5 +1,6 @@
 import cv2
 import time
+import logging
 from src.config import (
     LABEL_COLS, PPE_THRESHOLDS, HYSTERESIS_MARGIN,
     USE_EMA, EMA_ALPHA, ALERT_TIME_THRESHOLD,
@@ -7,13 +8,21 @@ from src.config import (
 )
 from src.infrastructure.supabase import log_violation_to_supabase, db_executor
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Violation tracking — replaces reported_ids set
-# {tid: {"violations": set(), "last_reported": float}}
+# {tid: {
+#   "violations": set(),          # Already reported violations
+#   "last_reported": float,        # Last time reported to supabase
+#   "cached_items": set(),         # Items waiting in cache (only 1/2)
+#   "cache_start_time": float,     # When cache started
+# }}
 # ---------------------------------------------------------------------------
 reported_violations: dict = {}
 
 VIOLATION_COOLDOWN_SEC = 300.0  # 5 minutes before re-reporting same tracker
+SINGLE_ITEM_CACHE_SEC = 10.0    # Cache timeout for single missing item (short time)
 
 
 class StreamState:
@@ -46,31 +55,77 @@ def get_next_state(class_name: str, prob: float, current_state) -> int:
 
 def _should_report(tid, missing_items: list, current_time: float) -> list:
     """
-    Returns list of violation types that should be logged.
-    - New items not yet reported in this cooldown window → log immediately
-    - Cooldown expired → reset and re-report all current violations
+    Returns list of violation types that should be logged to supabase.
+    
+    Caching logic for single-item violations:
+    - If only 1 out of 2 items missing: cache it, don't report yet
+    - If cache timeout expires and still 1 missing: report cached items
+    - If 2 items missing (escalation): report all immediately
+    - If back to all OK: clear cache
     """
     if tid not in reported_violations:
         reported_violations[tid] = {
-            "violations":    set(),
-            "last_reported": 0.0,
+            "violations":       set(),
+            "last_reported":    0.0,
+            "cached_items":     set(),
+            "cache_start_time": 0.0,
         }
 
     rec = reported_violations[tid]
+    missing_set = set(missing_items)
 
-    # Cooldown expired → reset, re-report everything
+    # Cooldown expired → reset reported violations, but keep cache
     if current_time - rec["last_reported"] >= VIOLATION_COOLDOWN_SEC:
         rec["violations"]    = set()
         rec["last_reported"] = 0.0
 
+    # If no violations now, clear cache
+    if not missing_set:
+        rec["cached_items"]     = set()
+        rec["cache_start_time"] = 0.0
+        return []
+
     # Find new violations not yet reported in this cooldown window
-    new_items = set(missing_items) - rec["violations"]
+    new_items = missing_set - rec["violations"]
 
-    if new_items:
-        rec["violations"].update(new_items)
-        rec["last_reported"] = current_time
+    # Handle single-item (1 out of 2) violations
+    if len(missing_set) == 1:
+        # If different item than cached, reset and start caching new item
+        if missing_set != rec["cached_items"]:
+            rec["cached_items"] = missing_set.copy()
+            rec["cache_start_time"] = current_time
+            return []  # Don't report yet, just cache
+        
+        # Same item - check if timeout expired
+        cache_age = current_time - rec["cache_start_time"]
+        if cache_age >= SINGLE_ITEM_CACHE_SEC:
+            # Cache timeout reached - report the cached items
+            to_report = rec["cached_items"] - rec["violations"]
+            if to_report:
+                logger.info(f"[TID {tid}] Cache timeout ({cache_age:.1f}s >= {SINGLE_ITEM_CACHE_SEC}s) - reporting {to_report}")
+                rec["violations"].update(to_report)
+                rec["last_reported"] = current_time
+                return list(to_report)
+        else:
+            logger.debug(f"[TID {tid}] Single item {missing_set} cached ({cache_age:.1f}s < {SINGLE_ITEM_CACHE_SEC}s)")
+        
+        # Still within cache timeout - don't report yet
+        return []
 
-    return list(new_items)
+    # Handle multiple-item (2 out of 2) violations - escalation
+    elif len(missing_set) >= 2:
+        # Clear cache since we now have escalated violation
+        logger.info(f"[TID {tid}] ESCALATION to {missing_set} - reporting new items {new_items}")
+        rec["cached_items"]     = set()
+        rec["cache_start_time"] = 0.0
+        
+        # Report any new items to supabase
+        if new_items:
+            rec["violations"].update(new_items)
+            rec["last_reported"] = current_time
+            return list(new_items)
+    
+    return []
 
 
 def update_ema_and_decide(
@@ -129,6 +184,7 @@ def update_ema_and_decide(
                         avg_probs[LABEL_COLS.index(item)]
                         for item in to_report
                     ]
+                    reporter_model = str(result.get("router_model", "unknown")).lower() if isinstance(result, dict) else "unknown"
                     import numpy as np
                     img_h, img_w = frame.shape[:2]
                     x1, y1, x2, y2 = map(int, box)
@@ -137,7 +193,7 @@ def update_ema_and_decide(
                     crop = frame[y1:y2, x1:x2].copy()
                     db_executor.submit(
                         log_violation_to_supabase,
-                        tid, to_report, report_probs, crop, session_id,
+                        tid, to_report, report_probs, crop, session_id, reporter_model,
                     )
 
         ppe_state[tid] = new_states

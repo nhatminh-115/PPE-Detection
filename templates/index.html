@@ -97,6 +97,7 @@
         .card-violations-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 6px; }
         .violation-tags { display: flex; flex-wrap: wrap; gap: 4px; }
         .vtag { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 7px; border-radius: 3px; background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(248,81,73,0.2); }
+        .model-chip { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 7px; border-radius: 3px; border: 1px solid var(--border); background: var(--surface-3); color: var(--text-secondary); }
         #toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
         .toast { font-size: 12px; font-weight: 500; padding: 10px 16px; border-radius: 6px; border: 1px solid; transition: opacity 0.3s; max-width: 300px; }
         .toast.success { background: rgba(26,61,30,0.95); border-color: rgba(63,185,80,0.4); color: #3fb950; }
@@ -727,18 +728,19 @@ async function fetchViolations() {
         grid.innerHTML='';
         data.forEach(item=>{
             const v=item.violations[0]||{}, imgPath=v.image_path?'/'+v.image_path:'';
+            const model=((item.reported_by_model||v.reported_by_model||'unknown')+'').toUpperCase();
             const timeStr=new Date(item.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
             const card=document.createElement('div'); card.className='violation-card';
             const imgDiv=document.createElement('div'); imgDiv.className='card-image';
             if(imgPath){const img=document.createElement('img');img.src=imgPath;img.alt='Violation';img.addEventListener('error',()=>{imgDiv.innerHTML='<span style="font-size:11px;color:var(--text-muted)">Image not found</span>';});imgDiv.appendChild(img);}
             const badge=document.createElement('div');badge.className='card-id-badge';badge.textContent='ID '+(v.tracker_id!=null?v.tracker_id:'—');imgDiv.appendChild(badge);
             const body=document.createElement('div');body.className='card-body';
-            const meta=document.createElement('div');meta.className='card-meta';meta.innerHTML=`<span class="card-time">${timeStr}</span><span class="card-status">${item.status}</span>`;
+            const meta=document.createElement('div');meta.className='card-meta';meta.innerHTML=`<span class="card-time">${timeStr}</span><span style="display:flex;align-items:center;gap:6px;"><span class="card-status">${item.status}</span><span class="model-chip">${model}</span></span>`;
             const lbl=document.createElement('div');lbl.className='card-violations-label';lbl.textContent='Missing PPE';
             const tags=document.createElement('div');tags.className='violation-tags';
             item.violations.forEach(vv=>{const tag=document.createElement('span');tag.className='vtag';tag.textContent=vv.violation_type.replace('none_','').toUpperCase();tags.appendChild(tag);});
             body.appendChild(meta);body.appendChild(lbl);body.appendChild(tags);
-            card.addEventListener('click',()=>openLightbox(imgPath,v.tracker_id,timeStr,item.violations));
+            card.addEventListener('click',()=>openLightbox(imgPath,v.tracker_id,timeStr,item.violations,model));
             card.appendChild(imgDiv);card.appendChild(body);grid.appendChild(card);
         });
     } catch { grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Failed to connect.</div>'; }
@@ -778,10 +780,12 @@ async function fetchStats() {
 // ---------------------------------------------------------------------------
 // Lightbox
 // ---------------------------------------------------------------------------
-function openLightbox(imgPath,trackerId,timeStr,violations) {
+function openLightbox(imgPath,trackerId,timeStr,violations,model='UNKNOWN') {
     document.getElementById('lb-id').textContent='ID '+(trackerId!=null?trackerId:'—');document.getElementById('lb-time-header').textContent=timeStr;
     const imgEl=document.getElementById('lb-img');if(imgPath){imgEl.src=imgPath;imgEl.style.display='';}else{imgEl.src='';imgEl.style.display='none';}
-    const tagsEl=document.getElementById('lb-tags');tagsEl.innerHTML='';violations.forEach(v=>{const tag=document.createElement('span');tag.className='vtag';tag.textContent=v.violation_type.replace('none_','').toUpperCase();tagsEl.appendChild(tag);});
+    const tagsEl=document.getElementById('lb-tags');tagsEl.innerHTML='';
+    const modelTag=document.createElement('span');modelTag.className='model-chip';modelTag.textContent='MODEL '+model;tagsEl.appendChild(modelTag);
+    violations.forEach(v=>{const tag=document.createElement('span');tag.className='vtag';tag.textContent=v.violation_type.replace('none_','').toUpperCase();tagsEl.appendChild(tag);});
     document.getElementById('lightbox').classList.remove('hidden');document.body.style.overflow='hidden';
 }
 function closeLightbox(){document.getElementById('lightbox').classList.add('hidden');document.body.style.overflow='';}
@@ -794,7 +798,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeLightbox();clo
 function showToast(msg,type){const c=document.getElementById('toast-container'),t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;c.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},3500);}
 
 let lastViolationId=null,pollInterval=null;
-function startPolling(){if(pollInterval)return;pollInterval=setInterval(async()=>{if(!isStreaming)return;try{const res=await fetch('/api/violations'),data=await res.json(),rows=data.data||[];if(!rows.length)return;const latest=rows[0];if(lastViolationId===null){lastViolationId=latest.id;return;}if(latest.id!==lastViolationId){rows.filter(r=>r.id!==lastViolationId).slice(0,3).forEach(row=>{const v=row.violations?.[0]||{};const types=(row.violations||[]).map(x=>x.violation_type.replace('none_','').toUpperCase()).join(', ');const time=new Date(row.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});const c=document.getElementById('toast-container'),t=document.createElement('div');t.className='toast violation';t.innerHTML=`<div class="vio-title">🚨 PPE Violation</div><div class="vio-detail">ID ${v.tracker_id??'—'} | ${types}</div><div class="vio-detail">${time}</div>`;c.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},6000);});lastViolationId=latest.id;}}catch(e){}},5000);}
+function startPolling(){if(pollInterval)return;pollInterval=setInterval(async()=>{if(!isStreaming)return;try{const res=await fetch('/api/violations'),data=await res.json(),rows=data.data||[];if(!rows.length)return;const latest=rows[0];if(lastViolationId===null){lastViolationId=latest.id;return;}if(latest.id!==lastViolationId){rows.filter(r=>r.id!==lastViolationId).slice(0,3).forEach(row=>{const v=row.violations?.[0]||{};const types=(row.violations||[]).map(x=>x.violation_type.replace('none_','').toUpperCase()).join(', ');const model=((row.reported_by_model||v.reported_by_model||'unknown')+'').toUpperCase();const time=new Date(row.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});const c=document.getElementById('toast-container'),t=document.createElement('div');t.className='toast violation';t.innerHTML=`<div class="vio-title">🚨 PPE Violation</div><div class="vio-detail">ID ${v.tracker_id??'—'} | ${types}</div><div class="vio-detail">Model ${model} | ${time}</div>`;c.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},6000);});lastViolationId=latest.id;}}catch(e){}},5000);}
 function stopPolling(){if(pollInterval){clearInterval(pollInterval);pollInterval=null;}lastViolationId=null;}
 
 // ---------------------------------------------------------------------------

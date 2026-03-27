@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import concurrent.futures
+import re
 import cv2
 import requests
 from supabase import create_client
@@ -74,7 +75,7 @@ def send_telegram_alert(tracker_id: int, missing_items: list, crop_img) -> None:
         logger.error(f"Telegram alert failed: {e}")
 
 
-def log_violation_to_supabase(tracker_id, missing_items, missing_probs, crop_img, session_id=None):
+def log_violation_to_supabase(tracker_id, missing_items, missing_probs, crop_img, session_id=None, reporter_model=None):
 
     """Asynchronously dispatches violation events and localized crops to Supabase."""
     try:
@@ -89,7 +90,8 @@ def log_violation_to_supabase(tracker_id, missing_items, missing_probs, crop_img
                 "tracker_id": int(tracker_id),
                 "image_path": img_filename,
                 "violation_type": f"none_{item}",
-                "confidence": float(prob)
+                "confidence": float(prob),
+                "reported_by_model": str(reporter_model or "unknown").lower(),
             }
             for item, prob in zip(missing_items, missing_probs)
         ]
@@ -97,12 +99,30 @@ def log_violation_to_supabase(tracker_id, missing_items, missing_probs, crop_img
         data = {
             "violations": violations_list,
             "status": "Warning",
-            "session_id": session_id,
+            "reported_by_model": str(reporter_model or "unknown").lower(),
         }
+        if session_id is not None:
+            data["session_id"] = session_id
 
         client = get_supabase_client()
         if client:
-            client.table("ppe_violations").insert(data).execute()
+            insert_payload = dict(data)
+            for _ in range(2):
+                try:
+                    client.table("ppe_violations").insert(insert_payload).execute()
+                    break
+                except Exception as db_ex:
+                    msg = str(db_ex)
+                    m = re.search(r"Could not find the '([^']+)' column", msg)
+                    if not m:
+                        raise
+                    missing_col = m.group(1)
+                    if missing_col not in insert_payload:
+                        raise
+                    # Drop unknown top-level column and retry once.
+                    insert_payload.pop(missing_col, None)
+            else:
+                raise RuntimeError("Failed to insert ppe_violations after schema fallback retries")
             logger.info(f"Database sync successful for violation ID: {tracker_id}.")
 
         # Instant Telegram alert with crop image

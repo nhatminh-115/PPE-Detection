@@ -10,7 +10,11 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from ultralytics import YOLO
-from src.config import CLIP_MODEL_NAME, CLIP_PRETRAINED, CLIP_PROMPTS, IMG_SIZE, NUM_CLASSES
+from src.config import (
+    CLIP_MODEL_NAME, CLIP_PRETRAINED, CLIP_PROMPTS,
+    IMG_SIZE, NUM_CLASSES,
+    EFFNET_VARIANT, EFFNET_WEIGHTS_PATH,
+)
 from src.infrastructure.mlflow import pull_artifact_from_mlflow_run
 
 logging.basicConfig(
@@ -84,12 +88,27 @@ effnet_preprocess = transforms.Compose([
 
 
 def _load_effnet_bundle():
-    candidates = [
-        "best_stage2_effnet.pt",
+    base_candidates = [
         "best_stage2_effnet_attention.pt",
-        *sorted(glob.glob("model_cache/*best_stage2_effnet.pt")),
         *sorted(glob.glob("model_cache/*best_stage2_effnet_attention.pt")),
     ]
+    attention_candidates = [
+        "best_stage2_effnet.pt",
+        *sorted(glob.glob("model_cache/*best_stage2_effnet.pt")),
+    ]
+
+    if EFFNET_WEIGHTS_PATH:
+        candidates = [EFFNET_WEIGHTS_PATH]
+        logger.info(f"EffNet selection mode: explicit path ({EFFNET_WEIGHTS_PATH})")
+    elif EFFNET_VARIANT == "base":
+        candidates = base_candidates
+        logger.info("EffNet selection mode: base")
+    elif EFFNET_VARIANT == "attention":
+        candidates = attention_candidates
+        logger.info("EffNet selection mode: attention")
+    else:
+        candidates = base_candidates + attention_candidates
+        logger.info("EffNet selection mode: auto")
 
     for path in candidates:
         if not os.path.exists(path):
