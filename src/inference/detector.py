@@ -7,12 +7,6 @@ try:
 except ImportError:
     WBF_AVAILABLE = False
 
-try:
-    from ensemble_boxes import weighted_boxes_fusion
-    WBF_AVAILABLE = True
-except ImportError:
-    WBF_AVAILABLE = False
-
 
 def extract_boxes(results, img_w, img_h, class_filter=None):
     boxes, scores, labels = [], [], []

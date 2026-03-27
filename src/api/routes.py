@@ -282,7 +282,7 @@ def get_router_config():
 
 
 @app.post("/api/router_config")
-def update_router_config(min_side_px: float = 90.0):
+def update_router_config(min_side_px: float = 110.0):
     # Keep threshold in a practical range to avoid accidental extremes from UI.
     clamped = max(32.0, min(512.0, float(min_side_px)))
     _clf.router_min_side_px = clamped

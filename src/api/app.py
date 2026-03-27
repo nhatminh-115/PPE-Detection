@@ -1,6 +1,9 @@
 import logging
 import os
 import glob
+import warnings
+import io
+from contextlib import nullcontext, redirect_stderr, redirect_stdout
 import torch
 import open_clip
 import timm
@@ -14,6 +17,9 @@ from src.config import (
     CLIP_MODEL_NAME, CLIP_PRETRAINED, CLIP_PROMPTS,
     IMG_SIZE, NUM_CLASSES,
     EFFNET_VARIANT, EFFNET_WEIGHTS_PATH,
+    MLFLOW_RUN_ID, MLFLOW_ARTIFACT_PATH,
+    MODEL2_PATH, MODEL_POSE_PATH,
+    INFERENCE_THREAD_WORKERS,
 )
 from src.infrastructure.mlflow import pull_artifact_from_mlflow_run
 
@@ -21,6 +27,60 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - [%(levelname)s] - %(message)s",
 )
+
+
+class _StartupNoiseFilter(logging.Filter):
+    """Drop known noisy INFO logs from tokenizer/model startup."""
+
+    _needles = (
+        "HFTokenizer",
+        "Parsing tokenizer identifier",
+        "Parsing model identifier",
+        "Attempting to load config from built-in",
+        "Loaded built-in",
+        "Instantiating model architecture",
+        "Loading full pretrained weights from",
+        "Final image preprocessing configuration set",
+        "creation process complete",
+        "HTTP Request: HEAD https://huggingface.co",
+        "HTTP Request: GET https://huggingface.co",
+        "unauthenticated requests to the HF Hub",
+    )
+
+    def filter(self, record):
+        msg = record.getMessage()
+        if any(needle in msg for needle in self._needles):
+            return False
+        return True
+
+
+if os.getenv("MUTE_THIRD_PARTY_STARTUP_LOGS", "1") == "1":
+    os.environ.setdefault("HF_HUB_DISABLE_IMPLICIT_TOKEN_WARNING", "1")
+    warnings.filterwarnings(
+        "ignore",
+        message=".*[Uu]nauthenticated requests to the HF Hub.*",
+    )
+    quiet_level = getattr(logging, os.getenv("THIRD_PARTY_LOG_LEVEL", "WARNING").upper(), logging.WARNING)
+    for noisy_logger in (
+        "open_clip",
+        "open_clip.factory",
+        "open_clip.tokenizer",
+        "huggingface_hub",
+        "huggingface_hub.file_download",
+        "httpx",
+        "httpcore",
+    ):
+        logging.getLogger(noisy_logger).setLevel(quiet_level)
+    logging.getLogger().addFilter(_StartupNoiseFilter())
+
+MUTE_STARTUP_NOISE = os.getenv("MUTE_THIRD_PARTY_STARTUP_LOGS", "1") == "1"
+
+
+def _quiet_startup_contexts():
+    if MUTE_STARTUP_NOISE:
+        return redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO())
+    return nullcontext(), nullcontext()
+
 logger = logging.getLogger(__name__)
 
 os.makedirs("model_cache", exist_ok=True)
@@ -30,12 +90,9 @@ os.makedirs("temp_uploads", exist_ok=True)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 logger.info(f"Inference device: {device}")
 
-model1_path = pull_artifact_from_mlflow_run(
-    run_id="b52f0641a3fe41899bb4c620fdef053d",
-    artifact_path="weights/best.pt",
-)
-model2_path    = "yolo26l.pt"
-model_pose_path = "yolo26m-pose.pt"
+model1_path     = pull_artifact_from_mlflow_run(MLFLOW_RUN_ID, MLFLOW_ARTIFACT_PATH)
+model2_path     = MODEL2_PATH
+model_pose_path = MODEL_POSE_PATH
 
 model1 = YOLO(model1_path)
 model1.predict(
@@ -56,13 +113,17 @@ model_pose.predict(dummy, device=device, verbose=False)
 # ---------------------------------------------------------------------------
 
 logger.info(f"Loading CLIP {CLIP_MODEL_NAME} ({CLIP_PRETRAINED})...")
-clip_model, _, clip_preprocess = open_clip.create_model_and_transforms(
-    CLIP_MODEL_NAME, pretrained=CLIP_PRETRAINED,
-)
+stdout_ctx, stderr_ctx = _quiet_startup_contexts()
+with stdout_ctx, stderr_ctx:
+    clip_model, _, clip_preprocess = open_clip.create_model_and_transforms(
+        CLIP_MODEL_NAME, pretrained=CLIP_PRETRAINED,
+    )
 clip_model.eval().to(device)
 
 # Pre-compute text embeddings (once at startup)
-tokenizer = open_clip.get_tokenizer(CLIP_MODEL_NAME)
+stdout_ctx, stderr_ctx = _quiet_startup_contexts()
+with stdout_ctx, stderr_ctx:
+    tokenizer = open_clip.get_tokenizer(CLIP_MODEL_NAME)
 clip_text_features = {}
 
 with torch.no_grad():
@@ -89,12 +150,12 @@ effnet_preprocess = transforms.Compose([
 
 def _load_effnet_bundle():
     base_candidates = [
-        "best_stage2_effnet_attention.pt",
-        *sorted(glob.glob("model_cache/*best_stage2_effnet_attention.pt")),
-    ]
-    attention_candidates = [
         "best_stage2_effnet.pt",
         *sorted(glob.glob("model_cache/*best_stage2_effnet.pt")),
+    ]
+    attention_candidates = [
+        "best_stage2_effnet_attention.pt",
+        *sorted(glob.glob("model_cache/*best_stage2_effnet_attention.pt")),
     ]
 
     if EFFNET_WEIGHTS_PATH:
@@ -159,7 +220,7 @@ model_stage2 = {
     "effnet": _load_effnet_bundle(),
 }
 
-executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=INFERENCE_THREAD_WORKERS)
 
 app = FastAPI(title="PPE Detection API", version="3.0.0")
 app.mount(
