@@ -261,7 +261,12 @@ def stop_webcam():
 # ---------------------------------------------------------------------------
 
 @app.post("/api/thresholds")
-def update_thresholds(hardhat_ok: float = 0.70, hardhat_warn: float = 0.40, vest_ok: float = 0.50, vest_warn: float = 0.15):
+def update_thresholds(
+    hardhat_ok: float = float(PPE_THRESHOLDS['hardhat']['ok']),
+    hardhat_warn: float = float(PPE_THRESHOLDS['hardhat']['warn']),
+    vest_ok: float = float(PPE_THRESHOLDS['vest']['ok']),
+    vest_warn: float = float(PPE_THRESHOLDS['vest']['warn']),
+):
     PPE_THRESHOLDS['hardhat']['ok']   = hardhat_ok
     PPE_THRESHOLDS['hardhat']['warn'] = hardhat_warn
     PPE_THRESHOLDS['vest']['ok']      = vest_ok
@@ -380,6 +385,290 @@ def get_violations():
         return {"data": []}
     res = client.table("ppe_violations").select("*").order("created_at", desc=True).limit(20).execute()
     return {"data": res.data}
+
+
+@app.get("/api/report/pdf")
+def download_report_pdf(session_id: str = None):
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+    from matplotlib.backends.backend_pdf import PdfPages
+    import numpy as np
+    import io
+    from datetime import datetime, timezone, timedelta
+    from collections import defaultdict
+
+    client = get_supabase_client()
+    if not client:
+        return Response(status_code=503)
+
+    ICT = timezone(timedelta(hours=7))
+    now = datetime.now(ICT)
+
+    query = client.table("ppe_violations").select("*")
+    if session_id:
+        query = query.eq("session_id", session_id)
+    rows = query.order("created_at", desc=True).limit(500).execute().data or []
+
+    hourly: dict = defaultdict(int)
+    hardhat_count = 0
+    vest_count = 0
+    tc: dict = defaultdict(int)
+    for row in rows:
+        dt = datetime.fromisoformat(row["created_at"]).astimezone(ICT)
+        hourly[dt.hour] += 1
+        for v in row.get("violations", []):
+            if v["violation_type"] == "none_hardhat":
+                hardhat_count += 1
+            elif v["violation_type"] == "none_vest":
+                vest_count += 1
+            tc[str(v["tracker_id"])] += 1
+
+    top_offenders = sorted(tc.items(), key=lambda x: x[1], reverse=True)[:8]
+    peak_hour = max(hourly, key=hourly.get) if hourly else None
+    total = len(rows)
+
+    BG       = '#ffffff'
+    HDR_BG   = '#0d1117'
+    ACCENT   = '#388bfd'
+    DANGER   = '#f85149'
+    WARNING  = '#f59e0b'
+    SUCCESS  = '#3fb950'
+    TXT_D    = '#1a1a2e'
+    TXT_M    = '#57606a'
+    BORDER   = '#d0d7de'
+
+    buf = io.BytesIO()
+    with PdfPages(buf) as pdf:
+        fig = plt.figure(figsize=(8.27, 11.69))
+        fig.patch.set_facecolor(BG)
+
+        # ── Header ──────────────────────────────────────────────────────────
+        hdr = fig.add_axes([0, 0.930, 1, 0.070])
+        hdr.set_facecolor(HDR_BG)
+        hdr.axis('off')
+        hdr.text(0.030, 0.66, 'PPE VISION', fontsize=15, fontweight='bold',
+                 color='white', va='center', transform=hdr.transAxes)
+        hdr.text(0.030, 0.24, 'SAFETY COMPLIANCE REPORT',
+                 fontsize=8, color='#8b949e', va='center',
+                 transform=hdr.transAxes, fontstyle='normal')
+        session_label = f"Session: {session_id}" if session_id else "All Sessions"
+        hdr.text(0.972, 0.66,
+                 f"Generated: {now.strftime('%d %b %Y, %H:%M')} ICT",
+                 fontsize=8, color='#8b949e', va='center', ha='right',
+                 transform=hdr.transAxes)
+        hdr.text(0.972, 0.24,
+                 f"{session_label}  ·  {total} records",
+                 fontsize=8, color='#8b949e', va='center', ha='right',
+                 transform=hdr.transAxes)
+
+        acc = fig.add_axes([0, 0.927, 1, 0.003])
+        acc.set_facecolor(ACCENT)
+        acc.axis('off')
+
+        # ── KPI cards ───────────────────────────────────────────────────────
+        top_id = f"ID {top_offenders[0][0]}" if top_offenders else '—'
+        peak_lbl = f"{str(peak_hour).zfill(2)}:00" if peak_hour is not None else '—'
+        kpis = [
+            ('TOTAL EVENTS',     str(total),         TXT_D,   '#f6f8fa'),
+            ('MISSING HARDHAT',  str(hardhat_count), DANGER,  '#fff0f0'),
+            ('MISSING VEST',     str(vest_count),    WARNING, '#fffbea'),
+            ('PEAK HOUR (ICT)',  peak_lbl,           SUCCESS, '#f0fff4'),
+            ('TOP OFFENDER',     top_id,             ACCENT,  '#f0f6ff'),
+        ]
+        cw, cgap = 0.184, 0.005
+        for i, (lbl, val, clr, bg) in enumerate(kpis):
+            x = 0.020 + i * (cw + cgap)
+            ca = fig.add_axes([x, 0.845, cw, 0.077])
+            ca.set_facecolor(bg)
+            ca.axis('off')
+            for sp in ca.spines.values():
+                sp.set_visible(False)
+            rect = mpatches.FancyBboxPatch(
+                (0.01, 0.01), 0.98, 0.98,
+                boxstyle="round,pad=0.01", linewidth=0.6,
+                edgecolor=BORDER, facecolor='none',
+                transform=ca.transAxes, clip_on=False,
+            )
+            ca.add_patch(rect)
+            ca.text(0.50, 0.64, val, fontsize=17, fontweight='bold',
+                    color=clr, ha='center', va='center', transform=ca.transAxes)
+            ca.text(0.50, 0.20, lbl, fontsize=6.5, color=TXT_M,
+                    ha='center', va='center', transform=ca.transAxes)
+
+        # ── Hourly bar chart ─────────────────────────────────────────────────
+        ha = fig.add_axes([0.055, 0.580, 0.555, 0.235])
+        ha.set_facecolor('#f6f8fa')
+        vals = [hourly.get(h, 0) for h in range(24)]
+        bar_clrs = [
+            WARNING if h == peak_hour else (DANGER if v > 0 else '#d0d7de')
+            for h, v in enumerate(vals)
+        ]
+        ha.bar(range(24), vals, color=bar_clrs, width=0.72, edgecolor='none', zorder=3)
+        ha.set_xlim(-0.5, 23.5)
+        ha.set_ylim(0, max(max(vals) * 1.25, 1))
+        ha.set_xticks([0, 6, 12, 18, 23])
+        ha.set_xticklabels(['00:00', '06:00', '12:00', '18:00', '23:00'],
+                           fontsize=7, color=TXT_M)
+        ha.tick_params(axis='y', labelsize=7, colors=TXT_M)
+        ha.grid(axis='y', color=BORDER, linewidth=0.5, zorder=0)
+        ha.set_axisbelow(True)
+        for sp in ['top', 'right']:
+            ha.spines[sp].set_visible(False)
+        ha.spines['left'].set_color(BORDER)
+        ha.spines['bottom'].set_color(BORDER)
+        ha.set_title('Violations by Hour (ICT)', fontsize=9, fontweight='600',
+                     color=TXT_D, pad=6, loc='left')
+        legend_patches = [
+            mpatches.Patch(color=DANGER,  label='Violations'),
+            mpatches.Patch(color=WARNING, label='Peak hour'),
+        ]
+        ha.legend(handles=legend_patches, fontsize=7, loc='upper right',
+                  framealpha=0.9, edgecolor=BORDER)
+
+        # ── Donut chart ──────────────────────────────────────────────────────
+        da = fig.add_axes([0.655, 0.600, 0.300, 0.210])
+        da.set_facecolor(BG)
+        da.set_aspect('equal')
+        total_types = hardhat_count + vest_count
+        if total_types > 0:
+            sizes = [hardhat_count, vest_count]
+            wedges, _ = da.pie(sizes, colors=[DANGER, WARNING], startangle=90,
+                               wedgeprops=dict(width=0.46))
+            da.text(0, 0, str(total_types), ha='center', va='center',
+                    fontsize=13, fontweight='bold', color=TXT_D)
+        else:
+            da.pie([1], colors=['#d0d7de'], wedgeprops=dict(width=0.46))
+            da.text(0, 0, '0', ha='center', va='center',
+                    fontsize=13, fontweight='bold', color=TXT_M)
+        da.set_title('Violation Type', fontsize=9, fontweight='600',
+                     color=TXT_D, pad=6, loc='left')
+
+        hh_pct = f"{round(hardhat_count/total_types*100)}%" if total_types else "0%"
+        vt_pct = f"{round(vest_count/total_types*100)}%" if total_types else "0%"
+        la = fig.add_axes([0.655, 0.565, 0.300, 0.038])
+        la.axis('off')
+        la.text(0.00, 0.75, '●', color=DANGER, fontsize=9,
+                transform=la.transAxes, va='center')
+        la.text(0.10, 0.75, f'No Hardhat — {hardhat_count} ({hh_pct})',
+                fontsize=7, color=TXT_M, transform=la.transAxes, va='center')
+        la.text(0.00, 0.20, '●', color=WARNING, fontsize=9,
+                transform=la.transAxes, va='center')
+        la.text(0.10, 0.20, f'No Vest — {vest_count} ({vt_pct})',
+                fontsize=7, color=TXT_M, transform=la.transAxes, va='center')
+
+        # ── Top offenders ────────────────────────────────────────────────────
+        oa = fig.add_axes([0.055, 0.415, 0.900, 0.140])
+        oa.set_facecolor('#f6f8fa')
+        if top_offenders:
+            ids_lbl = [f'ID {t[0]}' for t in top_offenders]
+            counts   = [t[1] for t in top_offenders]
+            y_pos    = list(range(len(top_offenders)))
+            bars_o   = oa.barh(y_pos, counts, color=DANGER, alpha=0.80,
+                               height=0.55, edgecolor='none')
+            for bar, cnt in zip(bars_o, counts):
+                oa.text(bar.get_width() + max(counts) * 0.01, bar.get_y() + bar.get_height() / 2,
+                        str(cnt), va='center', fontsize=7, color=TXT_D, fontweight='600')
+            oa.set_yticks(y_pos)
+            oa.set_yticklabels(ids_lbl, fontsize=7.5, color=TXT_D)
+            oa.tick_params(axis='x', labelsize=7, colors=TXT_M)
+            oa.set_xlim(0, max(counts) * 1.18)
+            oa.grid(axis='x', color=BORDER, linewidth=0.5, zorder=0)
+            oa.set_axisbelow(True)
+            oa.invert_yaxis()
+        else:
+            oa.text(0.5, 0.5, 'No violations recorded', fontsize=9,
+                    color=TXT_M, ha='center', va='center', transform=oa.transAxes)
+        for sp in ['top', 'right']:
+            oa.spines[sp].set_visible(False)
+        oa.spines['left'].set_color(BORDER)
+        oa.spines['bottom'].set_color(BORDER)
+        oa.set_title('Top Repeat Offenders', fontsize=9, fontweight='600',
+                     color=TXT_D, pad=6, loc='left')
+
+        # ── Violations table ─────────────────────────────────────────────────
+        MAX_ROWS = 15
+        table_rows = rows[:MAX_ROWS]
+        ROW_H = 0.052   # in axes coordinates
+        HDR_H = 0.060
+        TITLE_H = 0.042
+        table_ax_h = TITLE_H + HDR_H + len(table_rows) * ROW_H + 0.04
+        ta = fig.add_axes([0.030, 0.030, 0.940, min(table_ax_h, 0.370)])
+        ta.axis('off')
+        ta.set_facecolor(BG)
+
+        top_y = 1.0 - TITLE_H / ta.get_position().height * ta.get_position().height
+        ta.text(0.0, 0.985,
+                f'Recent Violation Log  (latest {min(len(rows), MAX_ROWS)} of {total})',
+                fontsize=9, fontweight='600', color=TXT_D,
+                transform=ta.transAxes, va='top')
+
+        cols      = ['#', 'Timestamp (ICT)', 'Tracker', 'Violations', 'Model', 'Session']
+        col_x     = [0.000, 0.040, 0.195, 0.290, 0.560, 0.680]
+        col_end_x = [0.038, 0.192, 0.286, 0.556, 0.676, 0.800]
+
+        hdr_y = 0.920
+        for lbl, x0, x1 in zip(cols, col_x, col_end_x):
+            ta.add_patch(mpatches.Rectangle(
+                (x0, hdr_y - HDR_H * 0.85), x1 - x0 - 0.003, HDR_H * 0.85,
+                facecolor=HDR_BG, transform=ta.transAxes, clip_on=False,
+            ))
+            ta.text(x0 + 0.006, hdr_y - HDR_H * 0.38, lbl,
+                    fontsize=6.5, color='white', fontweight='600',
+                    transform=ta.transAxes, va='center')
+
+        for idx, row in enumerate(table_rows):
+            row_y = hdr_y - HDR_H * 0.85 - (idx + 1) * ROW_H * 0.88
+            if row_y < 0:
+                break
+            row_bg = '#f6f8fa' if idx % 2 == 0 else BG
+            for x0, x1 in zip(col_x, col_end_x):
+                ta.add_patch(mpatches.Rectangle(
+                    (x0, row_y), x1 - x0 - 0.003, ROW_H * 0.82,
+                    facecolor=row_bg, edgecolor=BORDER, linewidth=0.3,
+                    transform=ta.transAxes, clip_on=False,
+                ))
+            dt_row  = datetime.fromisoformat(row["created_at"]).astimezone(ICT)
+            viols   = row.get("violations", [])
+            viol_str = ', '.join(dict.fromkeys(
+                v["violation_type"].replace("none_", "").upper() for v in viols
+            ))
+            t_id  = str(viols[0]["tracker_id"]) if viols else '—'
+            model = (row.get("reported_by_model") or
+                     (viols[0].get("reported_by_model", "?") if viols else "?"))
+            model = str(model).upper()[:8]
+            sess  = str(row.get("session_id", ""))[:8]
+            cells = [str(idx+1), dt_row.strftime('%m/%d %H:%M:%S'),
+                     t_id, viol_str, model, sess]
+            for val, x0 in zip(cells, col_x):
+                txt_clr = DANGER if any(k in val for k in ('HARDHAT', 'VEST')) else TXT_D
+                ta.text(x0 + 0.006, row_y + ROW_H * 0.37,
+                        str(val)[:22], fontsize=6, color=txt_clr,
+                        transform=ta.transAxes, va='center')
+
+        # ── Footer ───────────────────────────────────────────────────────────
+        fa = fig.add_axes([0, 0.000, 1, 0.026])
+        fa.set_facecolor('#f6f8fa')
+        fa.axis('off')
+        fa.axhline(y=0.98, color=BORDER, linewidth=0.5)
+        fa.text(0.030, 0.50, 'PPE Vision — Operations Center',
+                fontsize=7, color=TXT_M, va='center', transform=fa.transAxes)
+        fa.text(0.970, 0.50,
+                f'Generated {now.strftime("%Y-%m-%d %H:%M:%S")} ICT  ·  Page 1 of 1',
+                fontsize=7, color=TXT_M, va='center', ha='right',
+                transform=fa.transAxes)
+
+        pdf.savefig(fig, bbox_inches='tight')
+        plt.close(fig)
+
+    buf.seek(0)
+    filename = f"ppe_report_{now.strftime('%Y%m%d_%H%M')}.pdf"
+    return Response(
+        content=buf.read(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @app.post("/api/flush")

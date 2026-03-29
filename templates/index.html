@@ -270,6 +270,12 @@
                 <button onclick="fetchViolations()" class="btn-secondary"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M8 1v4l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Refresh</button>
                 <button onclick="flushImages()" class="btn-secondary danger"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2.5 4.5h11M6 4.5V3h4v1.5M5.5 4.5l.5 8h4l.5-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>Flush</button>
             </div>
+            <div id="dash-actions" style="display:none;gap:8px;">
+                <button onclick="downloadPDF()" class="btn-secondary" id="btn-pdf">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M10 2v3h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 9.5h5M5.5 11.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                    Export PDF
+                </button>
+            </div>
             <div id="view-toggle" style="display:none;gap:4px;">
                 <button onclick="setViewMode('grid')" id="btn-grid" class="btn-secondary" title="Grid"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/></svg></button>
                 <button onclick="setViewMode('single')" id="btn-single" class="btn-secondary" title="Single"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="1.5" stroke="currentColor" stroke-width="1.3"/></svg></button>
@@ -375,10 +381,11 @@ function switchTab(tabId) {
     document.getElementById(tabId).classList.remove('hidden');
     const m={'live-tab':'nav-live','log-tab':'nav-log','dashboard-tab':'nav-dashboard'};
     document.getElementById(m[tabId]).className='nav-item active';
-    const la=document.getElementById('log-actions'), vt=document.getElementById('view-toggle');
-    if (tabId==='live-tab') { la.style.display='none'; vt.style.display=isStreaming?'flex':'none'; document.getElementById('topbar-title-text').textContent='Live Inference'; document.getElementById('topbar-sub-text').textContent=`${Object.keys(activeCameras).length} cameras active`; }
-    else if (tabId==='log-tab') { la.style.display='flex'; vt.style.display='none'; document.getElementById('topbar-title-text').textContent='Violation Registry'; document.getElementById('topbar-sub-text').textContent='Supabase sync'; fetchViolations(); }
-    else { la.style.display='none'; vt.style.display='none'; document.getElementById('topbar-title-text').textContent='Analytics Dashboard'; document.getElementById('topbar-sub-text').textContent='Last 200 records'; fetchStats(); }
+    const la=document.getElementById('log-actions'), vt=document.getElementById('view-toggle'), da=document.getElementById('dash-actions');
+    la.style.display='none'; vt.style.display='none'; da.style.display='none';
+    if (tabId==='live-tab') { vt.style.display=isStreaming?'flex':'none'; document.getElementById('topbar-title-text').textContent='Live Inference'; document.getElementById('topbar-sub-text').textContent=`${Object.keys(activeCameras).length} cameras active`; }
+    else if (tabId==='log-tab') { la.style.display='flex'; document.getElementById('topbar-title-text').textContent='Violation Registry'; document.getElementById('topbar-sub-text').textContent='Supabase sync'; fetchViolations(); }
+    else { da.style.display='flex'; document.getElementById('topbar-title-text').textContent='Analytics Dashboard'; document.getElementById('topbar-sub-text').textContent='Last 200 records'; fetchStats(); }
 }
 
 function renderGrid() {
@@ -510,6 +517,29 @@ async function applyThresholds() {
     const ho=document.getElementById('hardhat-ok').value, hw=document.getElementById('hardhat-warn').value, vo=document.getElementById('vest-ok').value, vw=document.getElementById('vest-warn').value;
     await fetch(`/api/thresholds?hardhat_ok=${ho}&hardhat_warn=${hw}&vest_ok=${vo}&vest_warn=${vw}`,{method:'POST'});
     showToast('Thresholds updated','success');
+}
+
+async function fetchThresholds() {
+    try {
+        const res = await fetch('/api/thresholds');
+        const data = await res.json();
+        const th = data?.thresholds || {};
+
+        const hardhatWarn = parseFloat(th?.hardhat?.warn);
+        const hardhatOk = parseFloat(th?.hardhat?.ok);
+        const vestWarn = parseFloat(th?.vest?.warn);
+        const vestOk = parseFloat(th?.vest?.ok);
+
+        if (!Number.isNaN(hardhatWarn)) document.getElementById('hardhat-warn').value = hardhatWarn.toFixed(2);
+        if (!Number.isNaN(hardhatOk)) document.getElementById('hardhat-ok').value = hardhatOk.toFixed(2);
+        if (!Number.isNaN(vestWarn)) document.getElementById('vest-warn').value = vestWarn.toFixed(2);
+        if (!Number.isNaN(vestOk)) document.getElementById('vest-ok').value = vestOk.toFixed(2);
+    } catch (e) {
+        // Keep existing slider defaults if endpoint is temporarily unavailable.
+    }
+
+    onDualSlider('hardhat');
+    onDualSlider('vest');
 }
 
 function onRouterSliderInput() {
@@ -800,6 +830,37 @@ async function flushImages() {
 }
 
 // ---------------------------------------------------------------------------
+// PDF Export
+// ---------------------------------------------------------------------------
+async function downloadPDF() {
+    const btn = document.getElementById('btn-pdf');
+    const sid = document.getElementById('session-select').value;
+    const url = sid ? `/api/report/pdf?session_id=${encodeURIComponent(sid)}` : '/api/report/pdf';
+    btn.textContent = 'Generating…';
+    btn.disabled = true;
+    try {
+        const res = await fetch(url);
+        if (!res.ok) { showToast('Failed to generate report', 'error'); return; }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        const cd = res.headers.get('Content-Disposition') || '';
+        const match = cd.match(/filename=([^;]+)/);
+        a.download = match ? match[1].trim() : 'ppe_report.pdf';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+        showToast('Report downloaded', 'success');
+    } catch(e) {
+        showToast('Network error', 'error');
+    } finally {
+        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M10 2v3h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 9.5h5M5.5 11.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Export PDF';
+        btn.disabled = false;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Analytics
 // ---------------------------------------------------------------------------
 async function fetchStats() {
@@ -844,15 +905,59 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeLightbox();clo
 // ---------------------------------------------------------------------------
 function showToast(msg,type){const c=document.getElementById('toast-container'),t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;c.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},3500);}
 
-let lastViolationId=null,pollInterval=null;
-function startPolling(){if(pollInterval)return;pollInterval=setInterval(async()=>{if(!isStreaming)return;try{const res=await fetch('/api/violations'),data=await res.json(),rows=data.data||[];if(!rows.length)return;const latest=rows[0];if(lastViolationId===null){lastViolationId=latest.id;return;}if(latest.id!==lastViolationId){rows.filter(r=>r.id!==lastViolationId).slice(0,3).forEach(row=>{const v=row.violations?.[0]||{};const types=(row.violations||[]).map(x=>x.violation_type.replace('none_','').toUpperCase()).join(', ');const model=((row.reported_by_model||v.reported_by_model||'unknown')+'').toUpperCase();const time=new Date(row.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});const c=document.getElementById('toast-container'),t=document.createElement('div');t.className='toast violation';t.innerHTML=`<div class="vio-title">🚨 PPE Violation</div><div class="vio-detail">ID ${v.tracker_id??'—'} | ${types}</div><div class="vio-detail">Model ${model} | ${time}</div>`;c.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},6000);});lastViolationId=latest.id;}}catch(e){}},5000);}
-function stopPolling(){if(pollInterval){clearInterval(pollInterval);pollInterval=null;}lastViolationId=null;}
+let pollInterval=null;
+let seenViolationIds=new Set();
+
+function showViolationToast(row){
+    const v=row.violations?.[0]||{};
+    const types=(row.violations||[]).map(x=>x.violation_type.replace('none_','').toUpperCase()).join(', ');
+    const model=((row.reported_by_model||v.reported_by_model||'unknown')+'').toUpperCase();
+    const time=new Date(row.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const c=document.getElementById('toast-container'),t=document.createElement('div');
+    t.className='toast violation';
+    t.innerHTML=`<div class="vio-title">🚨 PPE Violation</div><div class="vio-detail">ID ${v.tracker_id??'—'} | ${types}</div><div class="vio-detail">Model ${model} | ${time}</div>`;
+    c.appendChild(t);
+    setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},6000);
+}
+
+function startPolling(){
+    if(pollInterval)return;
+    pollInterval=setInterval(async()=>{
+        if(!isStreaming)return;
+        try{
+            const res=await fetch('/api/violations'),data=await res.json(),rows=data.data||[];
+            if(!rows.length)return;
+
+            // Prime seen IDs on first poll so historical violations do not replay.
+            if(seenViolationIds.size===0){
+                rows.forEach(r=>seenViolationIds.add(r.id));
+                return;
+            }
+
+            const newRows=rows.filter(r=>!seenViolationIds.has(r.id));
+            if(!newRows.length)return;
+
+            newRows.slice(0,3).forEach(showViolationToast);
+            rows.forEach(r=>seenViolationIds.add(r.id));
+
+            // Keep memory bounded while preserving recent IDs from API window.
+            if(seenViolationIds.size>500){
+                seenViolationIds=new Set(rows.map(r=>r.id));
+            }
+        }catch(e){}
+    },5000);
+}
+
+function stopPolling(){
+    if(pollInterval){clearInterval(pollInterval);pollInterval=null;}
+    seenViolationIds.clear();
+}
 
 // ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 window.addEventListener('DOMContentLoaded',()=>{
-    onDualSlider('hardhat');onDualSlider('vest');
+    fetchThresholds();
     onRouterSliderInput();
     fetchRouterConfig();
     syncCamerasFromBackend();

@@ -197,7 +197,7 @@ stream_state    = StreamState()
 def _inference_worker(cam_state: CameraState, frame_q: queue.Queue, result_q: queue.Queue):
     tracker = sv.ByteTrack(
         track_activation_threshold=0.20,
-        lost_track_buffer=240,
+        lost_track_buffer=600,
         minimum_matching_threshold=0.8,
         minimum_consecutive_frames=2,
     )
