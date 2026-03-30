@@ -42,7 +42,11 @@
         .topbar-sub { font-size: 12px; color: var(--text-muted); }
         .status-badge { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); letter-spacing: 0.05em; }
         .status-badge.live { border-color: var(--success); background: var(--success-dim); color: var(--success); }
-        .tab-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 20px 24px 24px; }
+        .tabs-wrapper { position: relative; flex: 1; overflow: hidden; }
+        .tab-panel { position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden; padding: 20px 24px 24px; }
+        .tab-panel.hidden { display: none; }
+        /* visibility:hidden keeps MJPEG stream connections alive; display:none kills them */
+        #live-tab.stream-inactive { visibility: hidden; pointer-events: none; display: flex; }
         .camera-grid { flex: 1; display: grid; gap: 8px; overflow: hidden; }
         .camera-grid.grid-1 { grid-template-columns: 1fr; }
         .camera-grid.grid-2 { grid-template-columns: 1fr 1fr; }
@@ -284,6 +288,7 @@
         </div>
     </div>
 
+    <div class="tabs-wrapper">
     <div id="live-tab" class="tab-panel">
         <div id="camera-grid" class="camera-grid grid-1">
             <div class="camera-cell" id="empty-placeholder">
@@ -326,6 +331,7 @@
             <div class="dash-panel"><div class="dash-panel-title">Top Offenders</div><div id="top-offenders" style="margin-top:8px;"></div></div>
         </div>
     </div>
+    </div> <!-- /.tabs-wrapper -->
 </main>
 
 <!-- Add Camera Modal -->
@@ -376,9 +382,21 @@ let isStreaming = false, viewMode = 'grid', focusedCamId = null;
 let activeCameras = {}, modalTab = 'webcam', isCamMode = false;
 
 function switchTab(tabId) {
-    ['live-tab','log-tab','dashboard-tab'].forEach(t=>document.getElementById(t).classList.add('hidden'));
+    // log-tab and dashboard-tab: display:none is fine (no active streams inside)
+    ['log-tab','dashboard-tab'].forEach(t=>{
+        const el=document.getElementById(t);
+        if(t===tabId){ el.classList.remove('hidden'); } else { el.classList.add('hidden'); }
+    });
+    // live-tab: use visibility:hidden (stream-inactive) instead of display:none so
+    // the MJPEG <img> HTTP connections are not killed by the browser.
+    const liveTab=document.getElementById('live-tab');
+    if(tabId==='live-tab'){
+        liveTab.classList.remove('hidden','stream-inactive');
+    } else {
+        liveTab.classList.remove('hidden');
+        liveTab.classList.add('stream-inactive');
+    }
     ['nav-live','nav-log','nav-dashboard'].forEach(n=>document.getElementById(n).className='nav-item');
-    document.getElementById(tabId).classList.remove('hidden');
     const m={'live-tab':'nav-live','log-tab':'nav-log','dashboard-tab':'nav-dashboard'};
     document.getElementById(m[tabId]).className='nav-item active';
     const la=document.getElementById('log-actions'), vt=document.getElementById('view-toggle'), da=document.getElementById('dash-actions');

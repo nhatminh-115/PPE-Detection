@@ -4,20 +4,17 @@ import logging
 from src.config import (
     LABEL_COLS, PPE_THRESHOLDS, HYSTERESIS_MARGIN,
     USE_EMA, EMA_ALPHA, ALERT_TIME_THRESHOLD,
-    GRACE_PERIOD_SEC, STATE_COLORS, COLOR_TRACK,VIOLATION_COOLDOWN_SEC, SINGLE_ITEM_CACHE_SEC
+    GRACE_PERIOD_SEC, STATE_COLORS, COLOR_TRACK, VIOLATION_COOLDOWN_SEC
 )
 from src.infrastructure.supabase import log_violation_to_supabase, db_executor
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Violation tracking — replaces reported_ids set
-# {tid: {
-#   "violations": set(),          # Already reported violations
-#   "last_reported": float,        # Last time reported to supabase
-#   "cached_items": set(),         # Items waiting in cache (only 1/2)
-#   "cache_start_time": float,     # When cache started
-# }}
+# Violation tracking — per-item cooldown
+# {tid: {item_name: last_reported_time}}
+# Each PPE item (hardhat, vest) tracks its own 5-min cooldown independently.
+# Full recovery (all PPE back) clears all cooldowns for that tracker.
 # ---------------------------------------------------------------------------
 reported_violations: dict = {}
 
@@ -50,79 +47,40 @@ def get_next_state(class_name: str, prob: float, current_state) -> int:
         return 0
 
 
-def _should_report(tid, missing_items: list, current_time: float) -> list:
+def _should_report(tid, missing_items: list, current_time: float, session_id=None) -> list:
     """
     Returns list of violation types that should be logged to supabase.
-    
-    Caching logic for single-item violations:
-    - If only 1 out of 2 items missing: cache it, don't report yet
-    - If cache timeout expires and still 1 missing: report cached items
-    - If 2 items missing (escalation): report all immediately
-    - If back to all OK: clear cache
-    """
-    if tid not in reported_violations:
-        reported_violations[tid] = {
-            "violations":       set(),
-            "last_reported":    0.0,
-            "cached_items":     set(),
-            "cache_start_time": 0.0,
-        }
 
-    rec = reported_violations[tid]
+    Cooldown semantics (per-item, not per-event):
+    - Each PPE item has its own independent 5-min cooldown.
+    - An item is reported when it first goes missing; re-reported only after
+      VIOLATION_COOLDOWN_SEC has elapsed since its last report.
+    - Full recovery (all items OK) clears all per-item cooldowns so the next
+      violation event starts fresh.
+    - Partial recovery (e.g. vest back, hardhat still off) does NOT reset
+      hardhat's cooldown — it was already reported and the timer stands.
+      This prevents oscillating EMA states from spamming logs.
+    - Key is (session_id, tid) to avoid cross-camera tid collisions.
+    """
+    key = (session_id, tid)
+    if key not in reported_violations:
+        reported_violations[key] = {}   # {item_name: last_reported_time}
+
+    rec = reported_violations[key]
     missing_set = set(missing_items)
 
-    # Cooldown expired → reset reported violations, but keep cache
-    if current_time - rec["last_reported"] >= VIOLATION_COOLDOWN_SEC:
-        rec["violations"]    = set()
-        rec["last_reported"] = 0.0
+    to_report = []
+    for item in missing_set:
+        last_time = rec.get(item, 0.0)
+        if last_time == 0.0 or current_time - last_time >= VIOLATION_COOLDOWN_SEC:
+            to_report.append(item)
 
-    # If no violations now, clear cache
-    if not missing_set:
-        rec["cached_items"]     = set()
-        rec["cache_start_time"] = 0.0
-        return []
+    if to_report:
+        logger.info(f"[SID {session_id} TID {tid}] Reporting violation: {to_report} (missing: {missing_set})")
+        for item in to_report:
+            rec[item] = current_time
 
-    # Find new violations not yet reported in this cooldown window
-    new_items = missing_set - rec["violations"]
-
-    # Handle single-item (1 out of 2) violations
-    if len(missing_set) == 1:
-        # If different item than cached, reset and start caching new item
-        if missing_set != rec["cached_items"]:
-            rec["cached_items"] = missing_set.copy()
-            rec["cache_start_time"] = current_time
-            return []  # Don't report yet, just cache
-        
-        # Same item - check if timeout expired
-        cache_age = current_time - rec["cache_start_time"]
-        if cache_age >= SINGLE_ITEM_CACHE_SEC:
-            # Cache timeout reached - report the cached items
-            to_report = rec["cached_items"] - rec["violations"]
-            if to_report:
-                logger.info(f"[TID {tid}] Cache timeout ({cache_age:.1f}s >= {SINGLE_ITEM_CACHE_SEC}s) - reporting {to_report}")
-                rec["violations"].update(to_report)
-                rec["last_reported"] = current_time
-                return list(to_report)
-        else:
-            logger.debug(f"[TID {tid}] Single item {missing_set} cached ({cache_age:.1f}s < {SINGLE_ITEM_CACHE_SEC}s)")
-        
-        # Still within cache timeout - don't report yet
-        return []
-
-    # Handle multiple-item (2 out of 2) violations - escalation
-    elif len(missing_set) >= 2:
-        # Clear cache since we now have escalated violation
-        logger.info(f"[TID {tid}] ESCALATION to {missing_set} - reporting new items {new_items}")
-        rec["cached_items"]     = set()
-        rec["cache_start_time"] = 0.0
-        
-        # Report any new items to supabase
-        if new_items:
-            rec["violations"].update(new_items)
-            rec["last_reported"] = current_time
-            return list(new_items)
-    
-    return []
+    return to_report
 
 
 def update_ema_and_decide(
@@ -156,42 +114,54 @@ def update_ema_and_decide(
 
         quality = result.get("quality", {}) if isinstance(result, dict) else {}
         if quality.get("hardhat_visibility_low", False) and len(new_states) > 0 and new_states[0] == 0:
-            # Low-visibility head should not be escalated directly to hardhat miss.
-            new_states[0] = 1
+            # Only hold at WARN when prob is still in the ambiguous range.
+            # If EMA has clearly settled near 0, the person is genuinely not wearing
+            # a hardhat — do not suppress the MISSING state.
+            warn_th = float(PPE_THRESHOLDS["hardhat"]["warn"])
+            if float(avg_probs[0]) >= warn_th * 0.35:
+                new_states[0] = 1
 
         if tid not in violation_timer:
-            violation_timer[tid] = {"duration": 0.0, "last_tick": current_time}
+            violation_timer[tid] = {"last_tick": current_time, "durations": {}}
 
-        elapsed = current_time - violation_timer[tid]["last_tick"]
-        violation_timer[tid]["last_tick"] = current_time
+        vt = violation_timer[tid]
+        elapsed = current_time - vt["last_tick"]
+        vt["last_tick"] = current_time
 
-        if min(new_states) < 2:
-            violation_timer[tid]["duration"] += elapsed
-        else:
-            violation_timer[tid]["duration"] = 0.0
+        # Per-item timers: each PPE item accumulates independently.
+        # A brief dip on one item cannot piggyback on another item's elapsed time.
+        for i, label in enumerate(LABEL_COLS):
+            if new_states[i] == 0:
+                vt["durations"][label] = vt["durations"].get(label, 0.0) + elapsed
+            else:
+                vt["durations"][label] = 0.0
 
-        if violation_timer[tid]["duration"] >= ALERT_TIME_THRESHOLD:
-            missing_items = [LABEL_COLS[i] for i, s in enumerate(new_states) if s == 0]
-            missing_probs = [avg_probs[i] for i, s in enumerate(new_states) if s == 0]
+        ready_items = [
+            label for label in LABEL_COLS
+            if vt["durations"].get(label, 0.0) >= ALERT_TIME_THRESHOLD
+        ]
 
-            if missing_items:
-                to_report = _should_report(tid, missing_items, current_time)
-                if to_report:
-                    report_probs = [
-                        avg_probs[LABEL_COLS.index(item)]
-                        for item in to_report
-                    ]
-                    reporter_model = str(result.get("router_model", "unknown")).lower() if isinstance(result, dict) else "unknown"
-                    import numpy as np
-                    img_h, img_w = frame.shape[:2]
-                    x1, y1, x2, y2 = map(int, box)
-                    x1, y1 = max(0, x1), max(0, y1)
-                    x2, y2 = min(img_w, x2), min(img_h, y2)
-                    crop = frame[y1:y2, x1:x2].copy()
-                    db_executor.submit(
-                        log_violation_to_supabase,
-                        tid, to_report, report_probs, crop, session_id, reporter_model,
-                    )
+        # Full recovery: ALL items fully OK (state=2, green) → clear per-item
+        # cooldowns so the next violation event is treated as fresh.
+        # WARN (state=1) is NOT a recovery — EMA oscillation through WARN must
+        # not reset cooldowns or it will spam on every brief ambiguous frame.
+        if all(s == 2 for s in new_states):
+            reported_violations.pop((session_id, tid), None)
+
+        if ready_items:
+            to_report = _should_report(tid, ready_items, current_time, session_id)
+            if to_report:
+                report_probs = [avg_probs[LABEL_COLS.index(item)] for item in to_report]
+                reporter_model = str(result.get("router_model", "unknown")).lower() if isinstance(result, dict) else "unknown"
+                img_h, img_w = frame.shape[:2]
+                x1, y1, x2, y2 = map(int, box)
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(img_w, x2), min(img_h, y2)
+                crop = frame[y1:y2, x1:x2].copy()
+                db_executor.submit(
+                    log_violation_to_supabase,
+                    tid, to_report, report_probs, crop, session_id, reporter_model,
+                )
 
         ppe_state[tid] = new_states
         smoothed.append({
@@ -203,7 +173,7 @@ def update_ema_and_decide(
     return smoothed
 
 
-def garbage_collection(active_ids, current_time, last_seen_timer, *state_dicts):
+def garbage_collection(active_ids, current_time, last_seen_timer, *state_dicts, session_id=None):
     """Executes state cleanup utilizing Time-To-Live (TTL) grace periods."""
     for tid in active_ids:
         last_seen_timer[tid] = current_time
@@ -213,7 +183,7 @@ def garbage_collection(active_ids, current_time, last_seen_timer, *state_dicts):
         for d in state_dicts:
             if k in d:
                 del d[k]
-        reported_violations.pop(k, None)
+        reported_violations.pop((session_id, k), None)
         del last_seen_timer[k]
 
 

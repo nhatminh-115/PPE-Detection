@@ -10,6 +10,7 @@ from src.api.pipeline import (
     stream_state, camera_registry, _latest_frames,
 )
 from src.infrastructure.supabase import get_supabase_client
+from postgrest.exceptions import APIError as SupabaseAPIError
 from src.config import PPE_THRESHOLDS
 from src.inference.tracker import reported_violations
 import src.inference.classifier as _clf
@@ -56,11 +57,24 @@ def get_snapshot(cam_id: str):
     frame_w = cam.frame_w
     frame_h = cam.frame_h
 
+    # Stream has a cached frame but dimensions not yet written (tight race on
+    # first frame).  Decode to get exact size.
+    if frame_bytes and (not frame_w or not frame_h):
+        import numpy as _np
+        arr = _np.frombuffer(frame_bytes, dtype=_np.uint8)
+        tmp = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if tmp is not None:
+            fh, fw = tmp.shape[:2]
+            frame_w = fw
+            frame_h = fh
+            cam.frame_w = frame_w
+            cam.frame_h = frame_h
+
     if not frame_bytes:
         # Grab directly — stream not running yet
         source = cam.source
         if isinstance(source, int) or (isinstance(source, str) and str(source).isdigit()):
-            cap = cv2.VideoCapture(int(source), cv2.CAP_DSHOW)
+            cap = cv2.VideoCapture(int(source), cv2.CAP_MSMF)
             _time.sleep(0.5)
         else:
             cap = cv2.VideoCapture(source)
@@ -75,10 +89,18 @@ def get_snapshot(cam_id: str):
             return Response(status_code=503)
 
         h, w = frame.shape[:2]
-        scale  = 720 / h
-        frame  = cv2.resize(frame, (int(w * scale), 720))
+        scale   = 720 / h
+        frame   = cv2.resize(frame, (int(w * scale), 720))
         frame_w = int(w * scale)
         frame_h = 720
+
+        # Persist dimensions so set_zone coordinate conversion works correctly
+        # even when the user opens the zone editor before the stream has
+        # processed its first frame.
+        cam.proc_w  = w        # raw camera width  (= inference frame width)
+        cam.proc_h  = h        # raw camera height (= inference frame height)
+        cam.frame_w = frame_w  # display width (720p-scaled)
+        cam.frame_h = frame_h
 
         ret2, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
         if not ret2:
@@ -348,7 +370,11 @@ def get_stats(session_id: str = None):
     query = client.table("ppe_violations").select("*")
     if session_id:
         query = query.eq("session_id", session_id)
-    rows = query.order("created_at", desc=True).limit(200).execute().data or []
+    try:
+        rows = query.order("created_at", desc=True).limit(200).execute().data or []
+    except (SupabaseAPIError, Exception) as exc:
+        logger.warning(f"Supabase unavailable (stats): {exc}")
+        return {"total": 0, "none_hardhat": 0, "none_vest": 0, "hourly": {}, "top_offenders": []}
 
     from collections import defaultdict
     from datetime import datetime, timezone, timedelta
@@ -369,7 +395,11 @@ def get_sessions():
     client = get_supabase_client()
     if not client:
         return {"sessions": []}
-    rows = client.table("ppe_violations").select("session_id, created_at").order("created_at", desc=True).limit(200).execute().data or []
+    try:
+        rows = client.table("ppe_violations").select("session_id, created_at").order("created_at", desc=True).limit(200).execute().data or []
+    except (SupabaseAPIError, Exception) as exc:
+        logger.warning(f"Supabase unavailable (sessions): {exc}")
+        return {"sessions": []}
     seen = {}
     for row in rows:
         sid = row.get("session_id")
@@ -383,8 +413,12 @@ def get_violations():
     client = get_supabase_client()
     if not client:
         return {"data": []}
-    res = client.table("ppe_violations").select("*").order("created_at", desc=True).limit(20).execute()
-    return {"data": res.data}
+    try:
+        res = client.table("ppe_violations").select("*").order("created_at", desc=True).limit(20).execute()
+        return {"data": res.data}
+    except (SupabaseAPIError, Exception) as exc:
+        logger.warning(f"Supabase unavailable (violations): {exc}")
+        return {"data": []}
 
 
 @app.get("/api/report/pdf")
@@ -409,7 +443,12 @@ def download_report_pdf(session_id: str = None):
     query = client.table("ppe_violations").select("*")
     if session_id:
         query = query.eq("session_id", session_id)
-    rows = query.order("created_at", desc=True).limit(500).execute().data or []
+    try:
+        rows = query.order("created_at", desc=True).limit(500).execute().data or []
+    except (SupabaseAPIError, Exception) as exc:
+        logger.warning(f"Supabase unavailable (report): {exc}")
+        from fastapi.responses import Response as _Resp
+        return _Resp(status_code=503, content="Database temporarily unavailable")
 
     hourly: dict = defaultdict(int)
     hardhat_count = 0

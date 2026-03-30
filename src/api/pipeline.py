@@ -7,7 +7,7 @@ import supervision as sv
 from src.api.app import app, model1, model2, model_pose, model_stage2, device
 from src.config import (
     CONF_M1, CONF_M2, IOU_NMS, DETECT_EVERY, BOX_EMA_ALPHA,
-    CLASSIFY_ACTIVE_SEC, CLASSIFY_COOLDOWN_SEC,
+    CLASSIFY_ACTIVE_SEC,
     CLASSIFY_FORCE_RECHECK_SEC, CLASSIFY_UNCERTAIN_MARGIN,
     SIGLIP_LOCK_MIN_CONF, PPE_THRESHOLDS,
     CLASSIFY_LOCK_MIN_CONSISTENT,
@@ -135,6 +135,7 @@ class CameraState:
         self.trigger_restart = False
         self.active          = True
         self.paused          = False
+        self.streaming       = False  # True while a generator is actively running
         self.zone_polygon    = None   # np.array (N,2) int32 in processing-frame pixel coords
         self.frame_w         = None
         self.frame_h         = None
@@ -291,10 +292,8 @@ def _inference_worker(cam_state: CameraState, frame_q: queue.Queue, result_q: qu
                             active_zone_map.append((j, zi))
                     elif lock["state"] == "LOCKED":
                         lock_age = current_time - lock["locked_at"]
-                        force_recheck = lock_age >= CLASSIFY_FORCE_RECHECK_SEC
-                        cooldown_expired = lock_age >= CLASSIFY_COOLDOWN_SEC
                         unstable = not _is_verdict_stable(lock["verdict"])
-                        if force_recheck or cooldown_expired or unstable:
+                        if lock_age >= CLASSIFY_FORCE_RECHECK_SEC or unstable:
                             lock["state"] = "ACTIVE"
                             lock["started"] = current_time
                             lock["verdict"] = None
@@ -331,10 +330,10 @@ def _inference_worker(cam_state: CameraState, frame_q: queue.Queue, result_q: qu
                     frame_clean, ppe_ema, ppe_state, violation_timer,
                     current_time, cam_state.session_id,
                 )
-                garbage_collection(tracked.tracker_id, current_time, last_seen_timer, ppe_ema, box_ema, ppe_state, violation_timer, classify_lock)
+                garbage_collection(tracked.tracker_id, current_time, last_seen_timer, ppe_ema, box_ema, ppe_state, violation_timer, classify_lock, session_id=cam_state.session_id)
             else:
                 ppe_results = []
-                garbage_collection([], current_time, last_seen_timer, ppe_ema, box_ema, ppe_state, violation_timer)
+                garbage_collection([], current_time, last_seen_timer, ppe_ema, box_ema, ppe_state, violation_timer, session_id=cam_state.session_id)
 
             last_tracked     = tracked
             last_ppe_results = ppe_results
@@ -362,6 +361,12 @@ def generate_frames_for_camera(cam_id: str):
         logger.error(f"Unknown cam_id={cam_id}")
         return
 
+    # Prevent multiple concurrent generators for the same camera.
+    if cam_state.streaming:
+        logger.warning(f"[{cam_id}] Generator already running, skipping duplicate request")
+        return
+    cam_state.streaming = True
+
     frame_q  = queue.Queue(maxsize=_FRAME_QUEUE_SIZE)
     result_q = queue.Queue(maxsize=_RESULT_QUEUE_SIZE)
 
@@ -374,16 +379,27 @@ def generate_frames_for_camera(cam_id: str):
     inf_thread.start()
 
     cap = None
+    is_webcam = False
 
     def _open_cap():
-        nonlocal cap
+        nonlocal cap, is_webcam
         if cap is not None:
             cap.release()
+            cap = None
         source = cam_state.source
         logger.info(f"[{cam_id}] Opening: {source}")
-        if isinstance(source, int) or (isinstance(source, str) and str(source).isdigit()):
-            cap = cv2.VideoCapture(int(source), cv2.CAP_DSHOW)
-            time.sleep(0.5)
+        is_webcam = isinstance(source, int) or (isinstance(source, str) and str(source).isdigit())
+        if is_webcam:
+            # Avoid CAP_DSHOW — it raises unrecoverable C++ exceptions on some
+            # Windows/camera combinations that can crash the entire process.
+            # CAP_MSMF (Windows Media Foundation) is stable on Windows 8+.
+            cap = cv2.VideoCapture(int(source), cv2.CAP_MSMF)
+            time.sleep(1.0)
+            if not cap.isOpened():
+                cap.release()
+                # Last resort: let OpenCV pick any available backend.
+                cap = cv2.VideoCapture(int(source))
+                time.sleep(1.0)
         else:
             cap = cv2.VideoCapture(source)
         if not cap.isOpened():
@@ -413,6 +429,11 @@ def generate_frames_for_camera(cam_id: str):
             ret, frame = cap.read()
             if not ret:
                 logger.info(f"[{cam_id}] EOF")
+                if is_webcam:
+                    logger.info(f"[{cam_id}] Webcam EOF — attempting reconnect in 2s")
+                    time.sleep(2.0)
+                    _open_cap()
+                    continue
                 break
 
             try:
@@ -477,6 +498,7 @@ def generate_frames_for_camera(cam_id: str):
             yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
     finally:
+        cam_state.streaming = False
         frame_q.put(_STOP)
         inf_thread.join(timeout=5.0)
         if cap is not None:

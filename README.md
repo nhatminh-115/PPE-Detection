@@ -42,7 +42,7 @@ Before classification, detections are filtered through a user-defined polygon zo
 To reduce redundant GPU inference, each tracker follows a three-state lifecycle:
 
 * **ACTIVE (0–20s):** Classify every detection frame. Requires 3 consecutive stable verdicts before locking.
-* **LOCKED (20–65s):** Cached verdict is reused. Inference is skipped entirely.
+* **LOCKED:** Cached verdict is reused. Inference is skipped entirely.
 * **FORCE RECHECK:** Triggered after 20s of lock age, or when verdict confidence drops below threshold.
 
 **Stage 3: Pose-Guided PPE Classification**
@@ -66,9 +66,8 @@ Classification is routed by bounding box size:
 ### 1.2 State Management & Observability
 
 * **Hysteresis FSM:** Controls SAFE → WARN → VIOLATION transitions with strict margins to prevent oscillation.
-* **Temporal Accumulation:** A violation must be sustained for 3 seconds before triggering an event.
-* **Single-Item Cache:** When only 1 of 2 PPE items is missing, the system waits 10 seconds before reporting — filtering transient detections. If both items are missing (escalation), reporting is immediate.
-* **Violation Cooldown:** A 5-minute cooldown per tracker ID prevents duplicate reports. New violation types within the cooldown window are reported immediately.
+* **Temporal Accumulation:** Each PPE item has an independent 3-second timer. An item must be continuously missing for 3 seconds before triggering an event — brief EMA oscillations do not count.
+* **Violation Cooldown:** A 5-minute cooldown per PPE item per camera session prevents duplicate reports. Each item (hardhat, vest) tracks its own cooldown independently. Full recovery (all items green) resets cooldowns so the next event is treated as fresh. Cross-camera isolation is enforced via `(session_id, tracker_id)` keys.
 * **Idempotent Event Logging:** Violations are logged asynchronously (Fire-and-Forget ThreadPool) to Supabase PostgreSQL with a JSONB schema, alongside a localized crop image for manual auditing.
 * **Instant Telegram Alert:** Each confirmed violation dispatches a Telegram notification with the crop image attached, in parallel with the Supabase insert.
 

@@ -43,7 +43,7 @@ IMG_SIZE    = 224
 # ---------------------------------------------------------------------------
 USE_EMA              = True
 BOX_EMA_ALPHA        = 0.6
-EMA_ALPHA            = 0.3
+EMA_ALPHA            = 0.5
 HYSTERESIS_MARGIN    = 0.125
 ALERT_TIME_THRESHOLD = 3.0
 GRACE_PERIOD_SEC     = 10.0
@@ -62,13 +62,11 @@ PPE_THRESHOLDS = {
 ROUTER_MIN_SIDE_PX           = 110
 SIGLIP_USE_POSE              = True
 CLASSIFY_ACTIVE_SEC          = 20.0
-CLASSIFY_COOLDOWN_SEC        = 45.0
 CLASSIFY_FORCE_RECHECK_SEC   = 20.0
 CLASSIFY_UNCERTAIN_MARGIN    = 0.08
 SIGLIP_LOCK_MIN_CONF         = 0.82
 CLASSIFY_LOCK_MIN_CONSISTENT = 3
 VIOLATION_COOLDOWN_SEC       = 300.0  # 5 minutes before re-reporting same tracker
-SINGLE_ITEM_CACHE_SEC        = 10.0    # Cache timeout for single missing item (short time)
 
 # ---------------------------------------------------------------------------
 # Hardhat visibility gate
@@ -132,23 +130,31 @@ SIGLIP_PROMPTS = {
             'a person in a fluorescent safety vest',
             'a construction worker wearing a reflective yellow safety vest with reflective strips',
             'a person wearing PPE safety vest on a construction site',
-            'a person wearing lifejacket',
-            'a person wearing water rescue vest',
-            'a person wearing bouyancy vest',
+            'a worker wearing an orange high-visibility vest',
+            'a worker wearing a lime green reflective vest',
+            'a person wearing a safety vest even if partially occluded',
+            'a person wearing a reflective vest in low light',
+            'a distant construction worker wearing a safety vest',
             'top down view of a person wearing a safety vest',
-            'arial view of a person wearing a safety vest',
+            'aerial view of a person wearing a safety vest',
             'bird eye view of a person wearing a safety vest',
             'a worker wearing an open safety vest without fastening',
             'construction worker with unfastened high-vis vest draped over shoulders',
             'person wearing a loose reflective vest open at the front',
+            'a person wearing a dusty or dirty reflective safety vest',
+            'a person with reflective strips visible on a safety vest',
+            'a worker wearing a high-vis vest over dark clothes',
         ],
         'negative': [
             'a person without a safety vest',
             'a person in regular clothing without a vest',
             'a worker without a reflective vest',
-            'a person wearing a life jacket instead of a construction safety vest',
-            'arial view of a person in regular clothing without a safety vest',
+            'a person in a t-shirt with no safety vest',
+            'a person in a shirt or jacket with no high-visibility vest',
+            'a worker with bare torso area and no vest',
+            'aerial view of a person in regular clothing without a safety vest',
             'top down view of a person without a safety vest',
+            'construction worker without any reflective strips on torso clothing',
         ],
     },
 }
