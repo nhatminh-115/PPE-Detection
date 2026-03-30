@@ -65,10 +65,19 @@ Classification is routed by bounding box size:
 
 ### 1.2 State Management & Observability
 
-* **Hysteresis FSM:** Controls SAFE → WARN → VIOLATION transitions with strict margins to prevent oscillation.
-* **Temporal Accumulation:** Each PPE item has an independent 3-second timer. An item must be continuously missing for 3 seconds before triggering an event — brief EMA oscillations do not count.
-* **Violation Cooldown:** A 5-minute cooldown per PPE item per camera session prevents duplicate reports. Each item (hardhat, vest) tracks its own cooldown independently. Full recovery (all items green) resets cooldowns so the next event is treated as fresh. Cross-camera isolation is enforced via `(session_id, tracker_id)` keys.
+* **Hysteresis FSM:** Controls SAFE → WARN → VIOLATION transitions with strict margins to prevent oscillation. EMA smoothing (α=0.5) is applied to raw classification probabilities before state evaluation, enabling faster PPE state response while filtering frame-level noise.
+
+* **Per-Item Temporal Accumulation:** Each PPE item (hardhat, vest) maintains an independent 3-second accumulation timer. A timer increments only while that specific item is in the VIOLATION state (state=0), and resets to zero the moment the item recovers. A brief absence on one item cannot consume time toward another item's threshold — accumulation is fully decoupled. An item must be continuously missing for 3 seconds before a violation event is triggered.
+
+* **Per-Item Violation Cooldown:** A 5-minute cooldown is tracked independently per PPE item per camera session. Hardhat and vest each maintain their own cooldown timers; reporting one does not affect the other. Cooldown state is keyed by `(session_id, tracker_id)` to enforce strict cross-camera isolation — the same physical tracker ID on two different cameras never shares cooldown state.
+
+  Recovery semantics are strict by design:
+  * **Full recovery** (all PPE items back to state=2, green) clears all per-item cooldowns for that tracker, so the next violation event is treated as a fresh incident.
+  * **Partial recovery** (e.g. vest restored, hardhat still missing) does NOT reset the hardhat cooldown. The existing timer stands, preventing duplicate reports from partial state oscillation.
+  * **WARN state** (state=1) is explicitly not a recovery condition. EMA oscillation through the ambiguous zone does not reset any cooldown or re-arm the violation timer — only a confirmed full-green state does.
+
 * **Idempotent Event Logging:** Violations are logged asynchronously (Fire-and-Forget ThreadPool) to Supabase PostgreSQL with a JSONB schema, alongside a localized crop image for manual auditing.
+
 * **Instant Telegram Alert:** Each confirmed violation dispatches a Telegram notification with the crop image attached, in parallel with the Supabase insert.
 
 ### 1.3 Multi-Camera Architecture
