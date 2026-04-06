@@ -3,7 +3,6 @@ import time
 import logging
 import concurrent.futures
 import re
-import cv2
 import requests
 from supabase import create_client
 from src.config import SUPABASE_URL, SUPABASE_KEY, SUPABASE_SERVICE_KEY
@@ -83,6 +82,7 @@ def send_telegram_alert(tracker_id: int, missing_items: list, crop_img) -> None:
     try:
         if crop_img is not None and crop_img.size > 0:
             # Send image with caption
+            import cv2
             ret, buffer = cv2.imencode(".jpg", crop_img)
             if ret:
                 requests.post(
@@ -111,6 +111,7 @@ def log_violation_to_supabase(tracker_id, missing_items, missing_probs, crop_img
         img_filename = f"violation_crops/ID{tracker_id}_{timestamp_now}.jpg"
 
         if crop_img is not None and crop_img.size > 0:
+            import cv2
             cv2.imwrite(img_filename, crop_img)
 
         violations_list = [
