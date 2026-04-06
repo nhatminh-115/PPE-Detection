@@ -12,13 +12,15 @@ Hash-based dedupe:
   (crops/by-hash/<sha256>.jpg). Existing objects are reused without re-upload.
 """
 
+from __future__ import annotations
+
 import hashlib
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-import cv2
-import numpy as np
+# cv2 and numpy are lazy-imported inside functions that need them (not available in CI
+# environments that only run report/drift pipelines without OpenCV installed).
 
 # Prevent torch from loading CUDA DLLs at import time (WinError 1455 on small paging files).
 # Real-ESRGAN inference for crop normalization runs on CPU only — GPU is not needed here.
@@ -187,6 +189,7 @@ class _SRUpscaler:
                 return output, False
             except Exception as exc:
                 logger.debug("Real-ESRGAN upsample failed, falling back to bicubic: %s", exc)
+        import cv2
         h, w = img.shape[:2]
         return cv2.resize(img, (w * _SR_SCALE, h * _SR_SCALE), interpolation=cv2.INTER_CUBIC), True
 
@@ -208,6 +211,7 @@ def normalize_crop(img: np.ndarray) -> tuple[np.ndarray, bool]:
     Return (224x224 image, fallback_used).
     fallback_used=True when the SR model was unavailable and bicubic was used instead.
     """
+    import cv2
     h, w = img.shape[:2]
     fallback_used = False
     if min(h, w) < SR_THRESHOLD:
@@ -306,6 +310,7 @@ def upload_crop_to_storage(
         return None, None, False
 
     try:
+        import cv2
         img = cv2.imread(image_path)
         if img is None:
             logger.warning("Crop not found on disk: %s", image_path)
