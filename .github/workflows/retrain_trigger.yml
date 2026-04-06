@@ -71,39 +71,92 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          python-version: "3.11"
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }}
 
-      - name: Install retrain dependencies
-        run: |
-          pip install --upgrade pip
-          pip install \
-            supabase==2.3.4 \
-            python-dotenv==1.0.0 \
-            requests==2.32.5 \
-            boto3 \
-            mlflow \
-            timm \
-            torch torchvision \
-            pandas Pillow numpy tqdm torchmetrics
-
-      - name: Run EfficientNet retrain
+      - name: Generate user data script
         env:
-          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY:      ${{ secrets.SUPABASE_SERVICE_KEY }}
-          MLFLOW_TRACKING_URI:       ${{ secrets.MLFLOW_TRACKING_URI }}
-          MLFLOW_TRACKING_USERNAME:  ${{ secrets.MLFLOW_TRACKING_USERNAME }}
-          MLFLOW_TRACKING_PASSWORD:  ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
-          S3_BUCKET:                 ${{ secrets.S3_BUCKET }}
-          S3_PREFIX:                 ${{ vars.S3_PREFIX || 'ppe-flywheel' }}
-          AWS_ACCESS_KEY_ID:         ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY:     ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION:        ${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }}
-          ROLLING_RATE:              ${{ needs.check-drift.outputs.rolling_rate }}
-          MIN_SAMPLES:               "50"
-        run: python training/retrain_effnet.py
+          SUPABASE_URL:             ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY:     ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MLFLOW_TRACKING_URI:      ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+          S3_BUCKET:                ${{ secrets.S3_BUCKET }}
+          S3_PREFIX:                ${{ vars.S3_PREFIX || 'ppe-flywheel' }}
+          DOCKERHUB_USERNAME:       ${{ secrets.DOCKERHUB_USERNAME }}
+          ROLLING_RATE:             ${{ needs.check-drift.outputs.rolling_rate }}
+          AWS_REGION:               ${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }}
+        run: |
+          cat > user_data.sh << 'SCRIPT'
+          #!/bin/bash
+          set -euo pipefail
+          exec > /var/log/retrain.log 2>&1
+
+          INSTANCE_ID=$(curl -sf \
+            -H "X-aws-ec2-metadata-token: $(curl -sf -X PUT \
+              'http://169.254.169.254/latest/api/token' \
+              -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')" \
+            http://169.254.169.254/latest/meta-data/instance-id)
+
+          # Install and start Docker
+          dnf install -y docker
+          systemctl start docker
+
+          # Pull image and run retrain
+          # --network host lets the container inherit the instance IAM role via IMDS
+          docker run --rm --network host \
+            -e SUPABASE_URL="__SUPABASE_URL__" \
+            -e SUPABASE_SERVICE_KEY="__SUPABASE_SERVICE_KEY__" \
+            -e MLFLOW_TRACKING_URI="__MLFLOW_TRACKING_URI__" \
+            -e MLFLOW_TRACKING_USERNAME="__MLFLOW_TRACKING_USERNAME__" \
+            -e MLFLOW_TRACKING_PASSWORD="__MLFLOW_TRACKING_PASSWORD__" \
+            -e S3_BUCKET="__S3_BUCKET__" \
+            -e S3_PREFIX="__S3_PREFIX__" \
+            -e AWS_DEFAULT_REGION="__AWS_REGION__" \
+            -e ROLLING_RATE="__ROLLING_RATE__" \
+            -e MIN_SAMPLES="50" \
+            __DOCKERHUB_USERNAME__/ppe_system:latest \
+            python training/retrain_effnet.py
+
+          # Self-terminate when done
+          aws ec2 terminate-instances --instance-ids "$INSTANCE_ID" --region "__AWS_REGION__"
+          SCRIPT
+
+          # Substitute placeholders with actual secret values
+          sed -i \
+            -e "s|__SUPABASE_URL__|${SUPABASE_URL}|g" \
+            -e "s|__SUPABASE_SERVICE_KEY__|${SUPABASE_SERVICE_KEY}|g" \
+            -e "s|__MLFLOW_TRACKING_URI__|${MLFLOW_TRACKING_URI}|g" \
+            -e "s|__MLFLOW_TRACKING_USERNAME__|${MLFLOW_TRACKING_USERNAME}|g" \
+            -e "s|__MLFLOW_TRACKING_PASSWORD__|${MLFLOW_TRACKING_PASSWORD}|g" \
+            -e "s|__S3_BUCKET__|${S3_BUCKET}|g" \
+            -e "s|__S3_PREFIX__|${S3_PREFIX}|g" \
+            -e "s|__AWS_REGION__|${AWS_REGION}|g" \
+            -e "s|__ROLLING_RATE__|${ROLLING_RATE}|g" \
+            -e "s|__DOCKERHUB_USERNAME__|${DOCKERHUB_USERNAME}|g" \
+            user_data.sh
+
+          # Base64-encode for AWS API
+          base64 -w 0 user_data.sh > user_data.b64
+
+      - name: Launch EC2 Spot Instance
+        env:
+          LAUNCH_TEMPLATE_ID: ${{ vars.RETRAIN_LAUNCH_TEMPLATE_ID }}
+          SUBNET_ID:          ${{ vars.RETRAIN_SUBNET_ID }}
+          AWS_REGION:         ${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }}
+        run: |
+          INSTANCE_ID=$(aws ec2 run-instances \
+            --launch-template "LaunchTemplateId=${LAUNCH_TEMPLATE_ID}" \
+            --subnet-id "${SUBNET_ID}" \
+            --user-data "file://user_data.b64" \
+            --query "Instances[0].InstanceId" \
+            --output text \
+            --region "${AWS_REGION}")
+
+          echo "Launched Spot Instance: ${INSTANCE_ID}"
+          echo "Retrain running on EC2. Instance will self-terminate on completion."
+          echo "Monitor: https://console.aws.amazon.com/ec2/v2/home?region=${AWS_REGION}#Instances:instanceId=${INSTANCE_ID}"

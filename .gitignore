@@ -236,3 +236,11 @@ supabase
 benchmark_sr.py
 .claude/
 .agents/
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/terraform.tfvars
+terraform/backend.hcl
+terraform/*.tfplan

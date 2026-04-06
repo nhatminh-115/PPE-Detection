@@ -20,9 +20,10 @@ from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 
-DRIFT_THRESHOLD = float(os.environ.get("DRIFT_THRESHOLD", "0.25"))
-ROLLING_WINDOW  = 7   # days
-MIN_DATA_DAYS   = 3   # guard against early false triggers
+DRIFT_THRESHOLD        = float(os.environ.get("DRIFT_THRESHOLD", "0.25"))
+MIN_CONFIRMED_SAMPLES  = int(os.environ.get("MIN_CONFIRMED_SAMPLES", "100"))
+ROLLING_WINDOW         = 7   # days
+MIN_DATA_DAYS          = 3   # guard against early false triggers
 ICT = timezone(timedelta(hours=7))
 
 
@@ -97,20 +98,53 @@ def _rolling_rate_from_log(date_str: str) -> float | None:
     return round(sum(rates) / len(rates), 4)
 
 
+def _count_confirmed_labels() -> int:
+    """Return total confirmed (is_auto_labeled=False, skipped=False) label count."""
+    from src.infrastructure.supabase import get_supabase_service_client
+    client = get_supabase_service_client()
+    if not client:
+        return 0
+    try:
+        res = (
+            client.table("ppe_labels")
+            .select("id", count="exact")
+            .eq("is_auto_labeled", False)
+            .eq("skipped", False)
+            .execute()
+        )
+        return res.count or 0
+    except Exception as exc:
+        logger.warning("drift_monitor: confirmed label count failed: %s", exc)
+        return 0
+
+
 def run_drift_monitor(date_str: str | None = None) -> dict:
     """
     Compute daily disagreement rate, update drift_log, and return drift stats
     including whether EfficientNet retrain should be triggered.
+
+    Retrain triggers only when BOTH conditions are met:
+      - rolling_7d_rate > DRIFT_THRESHOLD
+      - total confirmed labels >= MIN_CONFIRMED_SAMPLES
     """
     from src.infrastructure.supabase import get_supabase_service_client
 
     if date_str is None:
         date_str = datetime.now(ICT).strftime("%Y-%m-%d")
 
-    daily   = compute_daily_rate(date_str)
-    rolling = _rolling_rate_from_log(date_str)
+    daily             = compute_daily_rate(date_str)
+    rolling           = _rolling_rate_from_log(date_str)
+    confirmed_total   = _count_confirmed_labels()
 
-    retrain_triggered = rolling is not None and rolling > DRIFT_THRESHOLD
+    rate_ok    = rolling is not None and rolling > DRIFT_THRESHOLD
+    samples_ok = confirmed_total >= MIN_CONFIRMED_SAMPLES
+    retrain_triggered = rate_ok and samples_ok
+
+    if rate_ok and not samples_ok:
+        logger.info(
+            "drift_monitor: rate threshold met (%.4f) but only %d/%d confirmed samples — retrain deferred",
+            rolling, confirmed_total, MIN_CONFIRMED_SAMPLES,
+        )
 
     client = get_supabase_service_client()
     if client:
