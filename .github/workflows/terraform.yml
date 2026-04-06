@@ -79,5 +79,5 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         env:
           TF_VAR_s3_bucket_name: ${{ secrets.S3_BUCKET }}
-          TF_VAR_aws_region:     ${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }}
+          TF_VAR_aws_region:     ${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }} 
         run: terraform apply -auto-approve tfplan
