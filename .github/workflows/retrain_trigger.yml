@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install supabase==2.3.4 python-dotenv==1.0.0
+          pip install supabase==2.3.4 python-dotenv==1.0.0 httpx==0.27.2
 
       - name: Check drift signal
         id: drift
