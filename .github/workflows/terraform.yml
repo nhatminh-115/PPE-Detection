@@ -82,7 +82,7 @@ jobs:
       - name: Set GitHub Variables from Terraform outputs
         if: github.event.inputs.action != 'destroy'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           LT_ID=$(terraform output -raw retrain_launch_template_id)
           SUBNET_ID=$(terraform output -raw retrain_subnet_id)
