@@ -45,7 +45,6 @@
         .tabs-wrapper { position: relative; flex: 1; overflow: hidden; }
         .tab-panel { position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden; padding: 20px 24px 24px; }
         .tab-panel.hidden { display: none; }
-        /* visibility:hidden keeps MJPEG stream connections alive; display:none kills them */
         #live-tab.stream-inactive { visibility: hidden; pointer-events: none; display: flex; }
         .camera-grid { flex: 1; display: grid; gap: 8px; overflow: hidden; }
         .camera-grid.grid-1 { grid-template-columns: 1fr; }
@@ -139,7 +138,6 @@
         .offender-bar-wrap { flex: 1; margin: 0 10px; height: 4px; background: var(--surface-3); border-radius: 2px; }
         .offender-bar { height: 100%; background: var(--danger); border-radius: 2px; }
         .offender-count { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-secondary); font-weight: 600; }
-        /* Zone modal */
         .zone-modal { position: fixed; inset: 0; z-index: 300; background: #080c14; display: flex; flex-direction: column; }
         .zone-modal.hidden { display: none; }
         .zone-topbar { height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
@@ -149,6 +147,98 @@
         .zone-frozen-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
         .zone-canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
         .zone-actions { display: flex; align-items: center; gap: 8px; }
+
+        /* ── Label Studio ─────────────────────────────────────────────── */
+        .label-topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-shrink: 0; gap: 12px; flex-wrap: wrap; }
+        .label-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .lstat { display: flex; align-items: center; gap: 5px; padding: 5px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; white-space: nowrap; }
+        .lstat .lstat-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+        .lstat-total .lstat-dot { background: var(--text-muted); }
+        .lstat-tp    .lstat-dot { background: #3fb950; }
+        .lstat-fp    .lstat-dot { background: #f85149; }
+        .lstat-fn    .lstat-dot { background: #f59e0b; }
+        .lstat-prec   { border-color: rgba(56,139,253,0.4); color: var(--accent); }
+        .lstat-recall { border-color: rgba(63,185,80,0.4);  color: var(--success); }
+        .label-filter-bar { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+        .filter-btn { padding: 5px 12px; border-radius: 5px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); font-family: 'JetBrains Mono', monospace; transition: all 0.15s; letter-spacing: 0.03em; }
+        .filter-btn:hover  { border-color: var(--accent); color: var(--text-primary); }
+        .filter-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+        .filter-btn.fp-btn.active { background: rgba(248,81,73,0.12); border-color: #f85149; color: #f85149; }
+        .filter-btn.fn-btn.active { background: rgba(245,158,11,0.12); border-color: #f59e0b; color: #f59e0b; }
+        .label-grid-container { flex: 1; overflow-y: auto; min-height: 0; }
+        .label-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; padding-bottom: 24px; }
+        .label-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color 0.15s, transform 0.1s; position: relative; }
+        .label-card:hover { border-color: #2d3f52; transform: translateY(-1px); }
+        .label-card.labeled { border-color: rgba(56,139,253,0.4); }
+        .label-card.has-fp  { border-color: rgba(248,81,73,0.5); }
+        .label-card.has-fn  { border-color: rgba(245,158,11,0.5); }
+        .label-card.all-tp  { border-color: rgba(63,185,80,0.5); }
+        .label-card.skipped { border-color: rgba(72,79,88,0.4); }
+        .label-card-img { height: 130px; background: var(--surface-3); position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        .label-card-img img { width: 100%; height: 100%; object-fit: cover; }
+        .label-badge { position: absolute; top: 6px; right: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 3px; letter-spacing: 0.06em; pointer-events: none; }
+        .label-badge.all-tp  { background: rgba(63,185,80,0.9);  color: #0d1117; }
+        .label-badge.has-fp  { background: rgba(248,81,73,0.9);  color: #fff; }
+        .label-badge.has-fn  { background: rgba(245,158,11,0.9); color: #0d1117; }
+        .label-badge.skipped { background: rgba(72,79,88,0.85);  color: #c9d1d9; }
+        .unlabeled-dot { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+        .label-card-body { padding: 8px 10px; }
+        .label-card-id   { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-secondary); font-weight: 600; margin-bottom: 3px; }
+        .label-card-time { font-size: 10px; color: var(--text-muted); margin-bottom: 5px; }
+        .label-card-tags { display: flex; flex-wrap: wrap; gap: 3px; }
+        .lc-vtag { font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 1px 5px; border-radius: 2px; background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(248,81,73,0.2); }
+        .conf-chip { font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 2px; letter-spacing: 0.04em; }
+        .conf-high { background: rgba(63,185,80,0.12);  color: #3fb950; border: 1px solid rgba(63,185,80,0.25); }
+        .conf-mid  { background: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.25); }
+        .conf-low  { background: rgba(248,81,73,0.12);  color: #f85149; border: 1px solid rgba(248,81,73,0.25); }
+        /* Label lightbox */
+        .label-lb { position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center; padding: 24px; }
+        .label-lb.hidden { display: none; }
+        .label-lb-backdrop { position: absolute; inset: 0; background: rgba(8,12,20,0.92); backdrop-filter: blur(8px); }
+        .label-lb-panel { position: relative; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; width: 540px; max-width: 95vw; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 32px 80px rgba(0,0,0,0.7); overflow: hidden; }
+        .label-lb-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+        .label-lb-title { font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 10px; }
+        .label-lb-counter { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); background: var(--surface-3); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; }
+        .label-lb-image { flex: 1; min-height: 200px; background: #000; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+        .label-lb-image img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+        .label-lb-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 32px; height: 48px; background: rgba(13,17,23,0.7); border: 1px solid var(--border); border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted); transition: all 0.15s; }
+        .label-lb-nav:hover { background: var(--surface-2); color: var(--text-primary); }
+        .label-lb-nav.prev { left: 8px; }
+        .label-lb-nav.next { right: 8px; }
+        /* Context strip */
+        .label-lb-context { padding: 10px 18px; background: var(--surface-3); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-shrink: 0; flex-wrap: wrap; }
+        .label-lb-context-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); flex-shrink: 0; }
+        .pred-chip { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 8px; border-radius: 3px; background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(248,81,73,0.2); }
+        /* Checkbox selector */
+        .label-selector { padding: 14px 18px; flex-shrink: 0; }
+        .label-selector-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 10px; }
+        .label-checkbox-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+        .ppe-checkbox { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-3); cursor: pointer; transition: all 0.15s; user-select: none; }
+        .ppe-checkbox:hover { border-color: var(--accent); background: var(--accent-dim); }
+        .ppe-checkbox.checked { border-color: #f85149; background: rgba(248,81,73,0.1); }
+        .ppe-checkbox input[type="checkbox"] { display: none; }
+        .ppe-cb-box { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--border); background: var(--surface-2); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+        .ppe-checkbox.checked .ppe-cb-box { background: #f85149; border-color: #f85149; }
+        .ppe-cb-check { display: none; }
+        .ppe-checkbox.checked .ppe-cb-check { display: block; }
+        .ppe-cb-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+        .ppe-checkbox.checked .ppe-cb-label { color: #f85149; }
+        .ppe-cb-sub { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+        /* Skip row */
+        .label-skip-row { display: flex; align-items: center; gap: 8px; }
+        .btn-skip-inline { flex: 1; padding: 9px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: var(--surface-3); color: var(--text-muted); font-family: 'Inter', sans-serif; transition: all 0.15s; }
+        .btn-skip-inline:hover { border-color: var(--text-muted); color: var(--text-secondary); }
+        .btn-confirm { flex: 2; padding: 10px; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; background: var(--accent); color: #fff; font-family: 'Inter', sans-serif; transition: opacity 0.15s; }
+        .btn-confirm:hover { opacity: 0.85; }
+        /* Keys */
+        .label-lb-keys { display: flex; justify-content: center; gap: 14px; padding: 10px 18px 14px; flex-shrink: 0; border-top: 1px solid var(--border); }
+        .key-hint { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text-muted); }
+        .key-hint kbd { font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 1px 5px; background: var(--surface-3); border: 1px solid var(--border); border-radius: 3px; color: var(--text-secondary); }
+        .label-progress-wrap { height: 2px; background: var(--surface-3); flex-shrink: 0; }
+        .label-progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--success)); transition: width 0.3s ease; }
+        .label-empty { grid-column: 1 / -1; text-align: center; padding: 60px 0; color: var(--text-muted); }
+        .label-empty-title { font-size: 14px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; }
+        .label-empty-sub { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
     </style>
 </head>
 <body>
@@ -170,6 +260,10 @@
         <button onclick="switchTab('dashboard-tab')" id="nav-dashboard" class="nav-item">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="8" width="4" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="6" y="5" width="4" height="9" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="11" y="2" width="4" height="12" rx="1" stroke="currentColor" stroke-width="1.3"/></svg>
             Analytics
+        </button>
+        <button onclick="switchTab('label-tab')" id="nav-label" class="nav-item">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12.5" cy="10.5" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M14.5 12.5l1.5 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            Label Studio
         </button>
     </div>
     <div class="sidebar-content">
@@ -225,32 +319,11 @@
             <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
                 <span style="font-size:11px;color:var(--text-secondary);">EffNet if min(width,height) &lt;</span>
                 <div style="display:flex;align-items:center;gap:4px;">
-                    <input
-                        type="number"
-                        id="router-min-side-val"
-                        min="32"
-                        max="512"
-                        step="1"
-                        value="110"
-                        oninput="onRouterValueInput()"
-                        onchange="applyRouterConfig()"
-                        onkeydown="onRouterValueKeydown(event)"
-                        style="width:64px;padding:2px 6px;background:rgba(56,139,253,0.12);border:1px solid rgba(56,139,253,0.35);border-radius:5px;color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:10px;text-align:right;"
-                    >
+                    <input type="number" id="router-min-side-val" min="32" max="512" step="1" value="110" oninput="onRouterValueInput()" onchange="applyRouterConfig()" onkeydown="onRouterValueKeydown(event)" style="width:64px;padding:2px 6px;background:rgba(56,139,253,0.12);border:1px solid rgba(56,139,253,0.35);border-radius:5px;color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:10px;text-align:right;">
                     <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--accent);">px</span>
                 </div>
             </div>
-            <input
-                type="range"
-                id="router-min-side"
-                min="32"
-                max="512"
-                step="1"
-                value="110"
-                oninput="onRouterSliderInput()"
-                onchange="applyRouterConfig()"
-                style="width:100%;accent-color:#388bfd;"
-            >
+            <input type="range" id="router-min-side" min="32" max="512" step="1" value="110" oninput="onRouterSliderInput()" onchange="applyRouterConfig()" style="width:100%;accent-color:#388bfd;">
             <div style="display:flex;justify-content:space-between;margin-top:4px;">
                 <span style="font-size:10px;color:var(--text-muted);">Small person → EffNet</span>
                 <span style="font-size:10px;color:var(--text-muted);">Large person → SigLIP</span>
@@ -280,6 +353,11 @@
                     Export PDF
                 </button>
             </div>
+            <div id="label-actions" style="display:none;gap:8px;">
+                <button onclick="loadLabelData()" class="btn-secondary"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M8 1v4l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Refresh</button>
+                <button onclick="exportLabels()" class="btn-secondary"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M5 7l3 3 3-3M2.5 13.5h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Export JSON</button>
+                <button onclick="clearAllLabels()" class="btn-secondary danger">Clear Labels</button>
+            </div>
             <div id="view-toggle" style="display:none;gap:4px;">
                 <button onclick="setViewMode('grid')" id="btn-grid" class="btn-secondary" title="Grid"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/></svg></button>
                 <button onclick="setViewMode('single')" id="btn-single" class="btn-secondary" title="Single"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="1.5" stroke="currentColor" stroke-width="1.3"/></svg></button>
@@ -289,6 +367,8 @@
     </div>
 
     <div class="tabs-wrapper">
+
+    <!-- Live Feed -->
     <div id="live-tab" class="tab-panel">
         <div id="camera-grid" class="camera-grid grid-1">
             <div class="camera-cell" id="empty-placeholder">
@@ -297,10 +377,12 @@
         </div>
     </div>
 
+    <!-- Violation Logs -->
     <div id="log-tab" class="tab-panel hidden">
         <div class="violations-container"><div id="violations-grid" class="violations-grid"><div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Click Refresh to pull records.</div></div></div>
     </div>
 
+    <!-- Analytics -->
     <div id="dashboard-tab" class="tab-panel hidden" style="overflow-y:auto;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
             <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);white-space:nowrap;">Session</span>
@@ -331,7 +413,36 @@
             <div class="dash-panel"><div class="dash-panel-title">Top Offenders</div><div id="top-offenders" style="margin-top:8px;"></div></div>
         </div>
     </div>
-    </div> <!-- /.tabs-wrapper -->
+
+    <!-- Label Studio -->
+    <div id="label-tab" class="tab-panel hidden">
+        <div class="label-topbar">
+            <div class="label-summary">
+                <div class="lstat lstat-total"><div class="lstat-dot"></div><span id="lstat-total-val">0</span> total</div>
+                <div class="lstat lstat-tp"><div class="lstat-dot"></div><span id="lstat-tp-val">0</span> TP</div>
+                <div class="lstat lstat-fp"><div class="lstat-dot"></div><span id="lstat-fp-val">0</span> FP</div>
+                <div class="lstat lstat-fn"><div class="lstat-dot"></div><span id="lstat-fn-val">0</span> FN</div>
+                <div class="lstat lstat-prec" id="lstat-prec-el" style="display:none;">Prec: <span id="lstat-prec-val">—</span></div>
+                <div class="lstat lstat-recall" id="lstat-recall-el" style="display:none;">Recall: <span id="lstat-recall-val">—</span></div>
+            </div>
+            <div class="label-filter-bar">
+                <button class="filter-btn active" id="filter-all"        onclick="setLabelFilter('all')">All</button>
+                <button class="filter-btn"         id="filter-unlabeled" onclick="setLabelFilter('unlabeled')">Unlabeled</button>
+                <button class="filter-btn fp-btn"  id="filter-fp"        onclick="setLabelFilter('fp')">Has FP</button>
+                <button class="filter-btn fn-btn"  id="filter-fn"        onclick="setLabelFilter('fn')">Has FN</button>
+            </div>
+        </div>
+        <div class="label-grid-container">
+            <div id="label-grid" class="label-grid">
+                <div class="label-empty">
+                    <div class="label-empty-title">No data loaded</div>
+                    <div class="label-empty-sub">Click Refresh to pull violations</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    </div><!-- /.tabs-wrapper -->
 </main>
 
 <!-- Add Camera Modal -->
@@ -365,7 +476,7 @@
     </div>
 </div>
 
-<!-- Lightbox -->
+<!-- Violation Lightbox -->
 <div id="lightbox" class="lightbox hidden" onclick="handleLightboxBackdropClick(event)">
     <div class="lightbox-backdrop"></div>
     <div class="lightbox-panel">
@@ -375,458 +486,370 @@
     </div>
 </div>
 
+<!-- Label Lightbox -->
+<div id="label-lightbox" class="label-lb hidden">
+    <div class="label-lb-backdrop" onclick="closeLabelLb()"></div>
+    <div class="label-lb-panel">
+        <div class="label-progress-wrap"><div class="label-progress-bar" id="label-progress-bar" style="width:0%"></div></div>
+        <div class="label-lb-header">
+            <div class="label-lb-title">
+                Label Violation
+                <span class="label-lb-counter" id="llb-counter">0 / 0</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span id="llb-current-badge" style="font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 8px;border-radius:3px;display:none;"></span>
+                <button onclick="closeLabelLb()" class="lightbox-close"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+            </div>
+        </div>
+        <div class="label-lb-image">
+            <img id="llb-img" src="" alt="Violation frame">
+            <div class="label-lb-nav prev" onclick="navigateLb(-1)"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M7.5 2L3.5 6l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="label-lb-nav next" onclick="navigateLb(1)"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M4.5 2L8.5 6l-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+        <!-- Context: pipeline predictions + tracker info -->
+        <div class="label-lb-context">
+            <span class="label-lb-context-label">Pipeline flagged</span>
+            <div id="llb-preds" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+            <span id="llb-conf"></span>
+            <span style="margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted);" id="llb-tracker-info"></span>
+        </div>
+        <!-- Checkbox selector -->
+        <div class="label-selector">
+            <div class="label-selector-title">What is actually missing in this image?</div>
+            <div class="label-checkbox-grid" id="llb-checkbox-grid">
+                <!-- populated by JS per event -->
+            </div>
+            <div class="label-skip-row">
+                <button class="btn-skip-inline" onclick="submitLabelCheckbox('skip')">— Skip (unclear)</button>
+                <button class="btn-confirm" onclick="submitLabelCheckbox('confirm')">Confirm →</button>
+            </div>
+        </div>
+        <div class="label-lb-keys">
+            <div class="key-hint"><kbd>1</kbd> Hardhat</div>
+            <div class="key-hint"><kbd>2</kbd> Vest</div>
+            <div class="key-hint"><kbd>Enter</kbd> Confirm</div>
+            <div class="key-hint"><kbd>S</kbd> Skip</div>
+            <div class="key-hint"><kbd>←</kbd><kbd>→</kbd> Navigate</div>
+            <div class="key-hint"><kbd>Esc</kbd> Close</div>
+        </div>
+    </div>
+</div>
+
 <div id="toast-container"></div>
 
 <script>
+// ============================================================
+// Core state
+// ============================================================
 let isStreaming = false, viewMode = 'grid', focusedCamId = null;
 let activeCameras = {}, modalTab = 'webcam', isCamMode = false;
 
+// ============================================================
+// Tab switching
+// ============================================================
 function switchTab(tabId) {
-    // log-tab and dashboard-tab: display:none is fine (no active streams inside)
-    ['log-tab','dashboard-tab'].forEach(t=>{
-        const el=document.getElementById(t);
-        if(t===tabId){ el.classList.remove('hidden'); } else { el.classList.add('hidden'); }
+    ['log-tab','dashboard-tab','label-tab'].forEach(t => {
+        document.getElementById(t)?.classList.add('hidden');
     });
-    // live-tab: use visibility:hidden (stream-inactive) instead of display:none so
-    // the MJPEG <img> HTTP connections are not killed by the browser.
-    const liveTab=document.getElementById('live-tab');
-    if(tabId==='live-tab'){
-        liveTab.classList.remove('hidden','stream-inactive');
+    const liveTab = document.getElementById('live-tab');
+    if (tabId === 'live-tab') {
+        liveTab.classList.remove('hidden', 'stream-inactive');
     } else {
         liveTab.classList.remove('hidden');
         liveTab.classList.add('stream-inactive');
+        document.getElementById(tabId)?.classList.remove('hidden');
     }
-    ['nav-live','nav-log','nav-dashboard'].forEach(n=>document.getElementById(n).className='nav-item');
-    const m={'live-tab':'nav-live','log-tab':'nav-log','dashboard-tab':'nav-dashboard'};
-    document.getElementById(m[tabId]).className='nav-item active';
-    const la=document.getElementById('log-actions'), vt=document.getElementById('view-toggle'), da=document.getElementById('dash-actions');
-    la.style.display='none'; vt.style.display='none'; da.style.display='none';
-    if (tabId==='live-tab') { vt.style.display=isStreaming?'flex':'none'; document.getElementById('topbar-title-text').textContent='Live Inference'; document.getElementById('topbar-sub-text').textContent=`${Object.keys(activeCameras).length} cameras active`; }
-    else if (tabId==='log-tab') { la.style.display='flex'; document.getElementById('topbar-title-text').textContent='Violation Registry'; document.getElementById('topbar-sub-text').textContent='Supabase sync'; fetchViolations(); }
-    else { da.style.display='flex'; document.getElementById('topbar-title-text').textContent='Analytics Dashboard'; document.getElementById('topbar-sub-text').textContent='Last 200 records'; fetchStats(); }
+
+    ['nav-live','nav-log','nav-dashboard','nav-label'].forEach(n => {
+        const el = document.getElementById(n);
+        if (el) el.className = 'nav-item';
+    });
+    const navMap = { 'live-tab': 'nav-live', 'log-tab': 'nav-log', 'dashboard-tab': 'nav-dashboard', 'label-tab': 'nav-label' };
+    document.getElementById(navMap[tabId]).className = 'nav-item active';
+
+    const la = document.getElementById('log-actions');
+    const vt = document.getElementById('view-toggle');
+    const da = document.getElementById('dash-actions');
+    const lba = document.getElementById('label-actions');
+    la.style.display = 'none'; vt.style.display = 'none'; da.style.display = 'none'; lba.style.display = 'none';
+
+    if (tabId === 'live-tab') {
+        vt.style.display = isStreaming ? 'flex' : 'none';
+        document.getElementById('topbar-title-text').textContent = 'Live Inference';
+        document.getElementById('topbar-sub-text').textContent = `${Object.keys(activeCameras).length} cameras active`;
+    } else if (tabId === 'log-tab') {
+        la.style.display = 'flex';
+        document.getElementById('topbar-title-text').textContent = 'Violation Registry';
+        document.getElementById('topbar-sub-text').textContent = 'Supabase sync';
+        fetchViolations();
+    } else if (tabId === 'dashboard-tab') {
+        da.style.display = 'flex';
+        document.getElementById('topbar-title-text').textContent = 'Analytics Dashboard';
+        document.getElementById('topbar-sub-text').textContent = 'Last 200 records';
+        fetchStats();
+    } else if (tabId === 'label-tab') {
+        lba.style.display = 'flex';
+        document.getElementById('topbar-title-text').textContent = 'Label Studio';
+        document.getElementById('topbar-sub-text').textContent = 'Human-in-the-Loop';
+        if (!labelAllRows.length) loadLabelData();
+        else { applyFilter(); renderLabelGrid(); renderLabelSummary(); }
+    }
 }
 
+// ============================================================
+// Camera grid
+// ============================================================
 function renderGrid() {
-    const grid=document.getElementById('camera-grid');
-    const ids=Object.keys(activeCameras);
-    if (ids.length===0) { grid.innerHTML=''; grid.className='camera-grid grid-1'; const ph=document.createElement('div'); ph.className='camera-cell'; ph.id='empty-placeholder'; ph.innerHTML='<div class="camera-placeholder"><div class="camera-placeholder-text">No Cameras Active</div><div class="camera-placeholder-sub">Add a camera to begin</div></div>'; grid.appendChild(ph); return; }
-    const n=viewMode==='single'?1:ids.length;
-    grid.className=`camera-grid ${n<=1?'grid-1':n===2?'grid-2':'grid-4'}`;
-    const toShow=viewMode==='single'&&focusedCamId?[focusedCamId]:ids;
-    Array.from(grid.querySelectorAll('.camera-cell')).forEach(c=>{ if (!toShow.includes(c.dataset.camId)) c.remove(); });
-    toShow.forEach(camId=>{
-        const cam=activeCameras[camId]; if (!cam) return;
-        let cell=grid.querySelector(`[data-cam-id="${camId}"]`);
+    const grid = document.getElementById('camera-grid');
+    const ids = Object.keys(activeCameras);
+    if (!ids.length) {
+        grid.innerHTML = ''; grid.className = 'camera-grid grid-1';
+        const ph = document.createElement('div'); ph.className = 'camera-cell'; ph.id = 'empty-placeholder';
+        ph.innerHTML = '<div class="camera-placeholder"><div class="camera-placeholder-text">No Cameras Active</div><div class="camera-placeholder-sub">Add a camera to begin</div></div>';
+        grid.appendChild(ph); return;
+    }
+    const n = viewMode === 'single' ? 1 : ids.length;
+    grid.className = `camera-grid ${n<=1?'grid-1':n===2?'grid-2':'grid-4'}`;
+    const toShow = viewMode === 'single' && focusedCamId ? [focusedCamId] : ids;
+    Array.from(grid.querySelectorAll('.camera-cell')).forEach(c => { if (!toShow.includes(c.dataset.camId)) c.remove(); });
+    toShow.forEach(camId => {
+        const cam = activeCameras[camId]; if (!cam) return;
+        let cell = grid.querySelector(`[data-cam-id="${camId}"]`);
         if (!cell) {
-            cell=document.createElement('div'); cell.className='camera-cell'; cell.dataset.camId=camId;
-            const img=document.createElement('img'); img.src=`/video_feed/${camId}`; img.alt=cam.label; cell.appendChild(img); cam.imgEl=img;
-            const zb=document.createElement('button'); zb.className='zone-btn'+(cam.hasZone?' has-zone':''); zb.id=`zone-btn-${camId}`; zb.textContent=cam.hasZone?'◉ ZONE':'+ ZONE';
-            zb.onclick=(e)=>{e.stopPropagation();openZoneEditor(camId);}; cell.appendChild(zb);
-            const ov=document.createElement('div'); ov.className='camera-cell-overlay'; ov.innerHTML=`<span class="camera-cell-label">${cam.label}</span><button class="camera-cell-remove" onclick="removeCamera('${camId}',event)">✕</button>`; cell.appendChild(ov);
-            cell.addEventListener('click',()=>focusCamera(camId)); grid.appendChild(cell);
+            cell = document.createElement('div'); cell.className = 'camera-cell'; cell.dataset.camId = camId;
+            const img = document.createElement('img'); img.src = `/video_feed/${camId}`; img.alt = cam.label; cell.appendChild(img); cam.imgEl = img;
+            const zb = document.createElement('button'); zb.className = 'zone-btn' + (cam.hasZone ? ' has-zone' : ''); zb.id = `zone-btn-${camId}`; zb.textContent = cam.hasZone ? '◉ ZONE' : '+ ZONE';
+            zb.onclick = (e) => { e.stopPropagation(); openZoneEditor(camId); }; cell.appendChild(zb);
+            const ov = document.createElement('div'); ov.className = 'camera-cell-overlay';
+            ov.innerHTML = `<span class="camera-cell-label">${cam.label}</span><button class="camera-cell-remove" onclick="removeCamera('${camId}',event)">✕</button>`; cell.appendChild(ov);
+            cell.addEventListener('click', () => focusCamera(camId)); grid.appendChild(cell);
         }
     });
 }
 
-function focusCamera(camId) { if (viewMode!=='single') return; focusedCamId=camId; document.querySelectorAll('.camera-cell').forEach(c=>c.classList.toggle('focused',c.dataset.camId===camId)); }
-function setViewMode(mode) { viewMode=mode; document.getElementById('btn-grid').classList.toggle('active',mode==='grid'); document.getElementById('btn-single').classList.toggle('active',mode==='single'); if (mode==='single'&&!focusedCamId) focusedCamId=Object.keys(activeCameras)[0]||null; renderGrid(); }
-
+function focusCamera(camId) { if (viewMode !== 'single') return; focusedCamId = camId; }
+function setViewMode(mode) { viewMode = mode; document.getElementById('btn-grid').classList.toggle('active', mode==='grid'); document.getElementById('btn-single').classList.toggle('active', mode==='single'); if (mode==='single' && !focusedCamId) focusedCamId = Object.keys(activeCameras)[0] || null; renderGrid(); }
 function openAddModal() { document.getElementById('add-modal').classList.remove('hidden'); }
 function closeAddModal() { document.getElementById('add-modal').classList.add('hidden'); }
-function switchModalTab(tab) { modalTab=tab; document.getElementById('modal-webcam').classList.toggle('hidden',tab!=='webcam'); document.getElementById('modal-rtsp').classList.toggle('hidden',tab!=='rtsp'); document.getElementById('tab-webcam').classList.toggle('active',tab==='webcam'); document.getElementById('tab-rtsp').classList.toggle('active',tab==='rtsp'); }
+function switchModalTab(tab) { modalTab = tab; document.getElementById('modal-webcam').classList.toggle('hidden', tab!=='webcam'); document.getElementById('modal-rtsp').classList.toggle('hidden', tab!=='rtsp'); document.getElementById('tab-webcam').classList.toggle('active', tab==='webcam'); document.getElementById('tab-rtsp').classList.toggle('active', tab==='rtsp'); }
 
 async function addCamera() {
     let url;
-    if (modalTab==='webcam') { const idx=document.getElementById('modal-cam-index').value||'0'; const lbl=document.getElementById('modal-cam-label-webcam').value; url=`/api/cameras/add_webcam?camera_index=${idx}&label=${encodeURIComponent(lbl)}`; }
-    else { const rtsp=document.getElementById('modal-rtsp-url').value.trim(); if (!rtsp){showToast('Enter URL','error');return;} const lbl=document.getElementById('modal-cam-label-rtsp').value; url=`/api/cameras/add_rtsp?url=${encodeURIComponent(rtsp)}&label=${encodeURIComponent(lbl)}`; }
+    if (modalTab === 'webcam') { const idx = document.getElementById('modal-cam-index').value||'0'; const lbl = document.getElementById('modal-cam-label-webcam').value; url = `/api/cameras/add_webcam?camera_index=${idx}&label=${encodeURIComponent(lbl)}`; }
+    else { const rtsp = document.getElementById('modal-rtsp-url').value.trim(); if (!rtsp){showToast('Enter URL','error');return;} const lbl = document.getElementById('modal-cam-label-rtsp').value; url = `/api/cameras/add_rtsp?url=${encodeURIComponent(rtsp)}&label=${encodeURIComponent(lbl)}`; }
     try {
-        const res=await fetch(url,{method:'POST'}); const data=await res.json();
-        if (data.status==='success') { activeCameras[data.cam_id]={label:data.label,imgEl:null,hasZone:false}; if (!focusedCamId) focusedCamId=data.cam_id; closeAddModal(); renderGrid(); renderCameraList(); updateStreamStatus(); showToast(`${data.label} added`,'success'); if (!isStreaming) startStreaming(); setTimeout(()=>openZoneEditor(data.cam_id),120); }
-        else showToast(data.message||'Failed','error');
-    } catch(e){showToast('Network error','error');}
+        const res = await fetch(url, {method:'POST'}); const data = await res.json();
+        if (data.status === 'success') { activeCameras[data.cam_id] = {label:data.label, imgEl:null, hasZone:false}; if (!focusedCamId) focusedCamId = data.cam_id; closeAddModal(); renderGrid(); renderCameraList(); updateStreamStatus(); showToast(`${data.label} added`, 'success'); if (!isStreaming) startStreaming(); setTimeout(() => openZoneEditor(data.cam_id), 120); }
+        else showToast(data.message || 'Failed', 'error');
+    } catch(e) { showToast('Network error', 'error'); }
 }
 
-async function removeCamera(camId,event) {
+async function removeCamera(camId, event) {
     if (event) event.stopPropagation();
-    await fetch(`/api/cameras/${camId}`,{method:'DELETE'});
+    await fetch(`/api/cameras/${camId}`, {method:'DELETE'});
     delete activeCameras[camId];
-    if (focusedCamId===camId) focusedCamId=Object.keys(activeCameras)[0]||null;
-    renderGrid(); renderCameraList(); updateStreamStatus(); showToast('Camera removed','success');
+    if (focusedCamId === camId) focusedCamId = Object.keys(activeCameras)[0] || null;
+    renderGrid(); renderCameraList(); updateStreamStatus(); showToast('Camera removed', 'success');
 }
 
 function renderCameraList() {
-    const list=document.getElementById('camera-list'), ids=Object.keys(activeCameras);
-    if (!ids.length){list.innerHTML='<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:12px 0;">No cameras added yet</div>';return;}
-    list.innerHTML='';
-    ids.forEach(camId=>{const cam=activeCameras[camId]; const item=document.createElement('div'); item.className='camera-item'; item.innerHTML=`<div class="camera-item-dot"></div><div style="flex:1;min-width:0;"><div class="camera-item-label">${cam.label}</div><div class="camera-item-id">${camId}</div></div><button class="camera-item-remove" onclick="removeCamera('${camId}')">✕</button>`; list.appendChild(item);});
+    const list = document.getElementById('camera-list'), ids = Object.keys(activeCameras);
+    if (!ids.length) { list.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:12px 0;">No cameras added yet</div>'; return; }
+    list.innerHTML = '';
+    ids.forEach(camId => { const cam = activeCameras[camId]; const item = document.createElement('div'); item.className = 'camera-item'; item.innerHTML = `<div class="camera-item-dot"></div><div style="flex:1;min-width:0;"><div class="camera-item-label">${cam.label}</div><div class="camera-item-id">${camId}</div></div><button class="camera-item-remove" onclick="removeCamera('${camId}')">✕</button>`; list.appendChild(item); });
 }
 
 function startStreaming() {
-    isStreaming=true;
-    document.getElementById('btn-stream').textContent='Stop All Cameras'; document.getElementById('btn-stream').classList.add('btn-danger-bg');
-    document.getElementById('stream-status-badge').textContent='LIVE'; document.getElementById('stream-status-badge').className='status-badge live';
+    isStreaming = true;
+    document.getElementById('btn-stream').textContent = 'Stop All Cameras'; document.getElementById('btn-stream').classList.add('btn-danger-bg');
+    document.getElementById('stream-status-badge').textContent = 'LIVE'; document.getElementById('stream-status-badge').className = 'status-badge live';
     document.querySelector('.status-dot').classList.add('live');
-    document.getElementById('view-toggle').style.display='flex'; updateStreamStatus(); startPolling();
+    document.getElementById('view-toggle').style.display = 'flex'; updateStreamStatus(); startPolling();
 }
 
 function stopStreaming() {
-    isStreaming=false;
-    document.querySelectorAll('.camera-cell img').forEach(img=>{img.src='';});
-    document.getElementById('btn-stream').textContent='Start All Cameras'; document.getElementById('btn-stream').classList.remove('btn-danger-bg');
-    document.getElementById('stream-status-badge').textContent='OFFLINE'; document.getElementById('stream-status-badge').className='status-badge';
+    isStreaming = false;
+    document.querySelectorAll('.camera-cell img').forEach(img => { img.src = ''; });
+    document.getElementById('btn-stream').textContent = 'Start All Cameras'; document.getElementById('btn-stream').classList.remove('btn-danger-bg');
+    document.getElementById('stream-status-badge').textContent = 'OFFLINE'; document.getElementById('stream-status-badge').className = 'status-badge';
     document.querySelector('.status-dot').classList.remove('live');
-    document.getElementById('view-toggle').style.display='none'; stopPolling();
+    document.getElementById('view-toggle').style.display = 'none'; stopPolling();
 }
 
 function toggleAllStreams() {
     if (isStreaming) { stopStreaming(); }
     else {
-        if (!Object.keys(activeCameras).length){showToast('Add a camera first','error');return;}
-        Object.keys(activeCameras).forEach(camId=>{const img=document.querySelector(`[data-cam-id="${camId}"] img`); if(img) img.src=`/video_feed/${camId}`;});
+        if (!Object.keys(activeCameras).length) { showToast('Add a camera first', 'error'); return; }
+        Object.keys(activeCameras).forEach(camId => { const img = document.querySelector(`[data-cam-id="${camId}"] img`); if(img) img.src = `/video_feed/${camId}`; });
         startStreaming();
     }
 }
 
-function updateStreamStatus() { const n=Object.keys(activeCameras).length; document.getElementById('topbar-sub-text').textContent=`${n} camera${n!==1?'s':''} active`; }
+function updateStreamStatus() { const n = Object.keys(activeCameras).length; document.getElementById('topbar-sub-text').textContent = `${n} camera${n!==1?'s':''} active`; }
 
 async function uploadVideoFile() {
-    const file=document.getElementById('video-upload').files[0]; if(!file) return;
-    document.getElementById('file-name').textContent=file.name;
-    const fd=new FormData(); fd.append('video_file',file);
-    const res=await fetch('/upload_video',{method:'POST',body:fd}); const data=await res.json();
-    if(data.status==='success'){
-        if (data.cam_id && !activeCameras[data.cam_id]) {
-            activeCameras[data.cam_id] = { label: data.label || file.name, imgEl: null, hasZone: false };
-            if (!focusedCamId) focusedCamId = data.cam_id;
-            renderGrid();
-            renderCameraList();
-            updateStreamStatus();
-        } else {
-            await syncCamerasFromBackend();
-        }
-        showToast(data.message,'success');
-        if(!isStreaming)startStreaming();
-        if (data.cam_id) setTimeout(()=>openZoneEditor(data.cam_id),120);
-    }
-    else showToast('Upload failed.','error');
+    const file = document.getElementById('video-upload').files[0]; if (!file) return;
+    document.getElementById('file-name').textContent = file.name;
+    const fd = new FormData(); fd.append('video_file', file);
+    const res = await fetch('/upload_video', {method:'POST', body:fd}); const data = await res.json();
+    if (data.status === 'success') {
+        if (data.cam_id && !activeCameras[data.cam_id]) { activeCameras[data.cam_id] = {label: data.label || file.name, imgEl: null, hasZone: false}; if (!focusedCamId) focusedCamId = data.cam_id; renderGrid(); renderCameraList(); updateStreamStatus(); }
+        else { await syncCamerasFromBackend(); }
+        showToast(data.message, 'success');
+        if (!isStreaming) startStreaming();
+        if (data.cam_id) setTimeout(() => openZoneEditor(data.cam_id), 120);
+    } else showToast('Upload failed.', 'error');
 }
 
 async function syncCamerasFromBackend() {
-    try { const res=await fetch('/api/cameras'); const data=await res.json(); (data.cameras||[]).forEach(cam=>{if(!activeCameras[cam.cam_id]){activeCameras[cam.cam_id]={label:cam.label,imgEl:null,hasZone:false};if(!focusedCamId)focusedCamId=cam.cam_id;}}); renderGrid(); renderCameraList(); } catch(e){}
+    try { const res = await fetch('/api/cameras'); const data = await res.json(); (data.cameras||[]).forEach(cam => { if (!activeCameras[cam.cam_id]) { activeCameras[cam.cam_id] = {label:cam.label, imgEl:null, hasZone:false}; if (!focusedCamId) focusedCamId = cam.cam_id; } }); renderGrid(); renderCameraList(); } catch(e) {}
 }
 
 async function toggleCamMode() {
-    const btn=document.getElementById('btn-cam'); isCamMode=!isCamMode;
-    await fetch(`/api/cam_mode?enabled=${isCamMode}`,{method:'POST'});
-    if(isCamMode){btn.style.borderColor='#f59e0b';btn.style.color='#f59e0b';btn.style.background='rgba(245,158,11,0.1)';showToast('CAM Overlay ON','success');}
-    else{btn.style.borderColor='';btn.style.color='';btn.style.background='';showToast('CAM Overlay OFF','success');}
+    const btn = document.getElementById('btn-cam'); isCamMode = !isCamMode;
+    await fetch(`/api/cam_mode?enabled=${isCamMode}`, {method:'POST'});
+    if (isCamMode) { btn.style.borderColor='#f59e0b'; btn.style.color='#f59e0b'; btn.style.background='rgba(245,158,11,0.1)'; showToast('CAM Overlay ON','success'); }
+    else { btn.style.borderColor=''; btn.style.color=''; btn.style.background=''; showToast('CAM Overlay OFF','success'); }
 }
 
+// ============================================================
+// Sliders
+// ============================================================
 function onDualSlider(type) {
-    const we=document.getElementById(type+'-warn'), oe=document.getElementById(type+'-ok');
-    let w=parseFloat(we.value), o=parseFloat(oe.value);
-    if(w>=o){if(document.activeElement===we){w=o-0.05;we.value=w;}else{o=w+0.05;oe.value=o;}}
-    document.getElementById(type+'-warn-val').textContent=w.toFixed(2); document.getElementById(type+'-ok-val').textContent=o.toFixed(2);
-    const min=0.05,max=0.90,wp=((w-min)/(max-min))*100,op=((o-min)/(max-min))*100;
-    document.getElementById(type+'-fill').style.background=`linear-gradient(to right,#f85149 0%,#f85149 ${wp}%,#f59e0b ${wp}%,#f59e0b ${op}%,#3fb950 ${op}%,#3fb950 100%)`;
+    const we = document.getElementById(type+'-warn'), oe = document.getElementById(type+'-ok');
+    let w = parseFloat(we.value), o = parseFloat(oe.value);
+    if (w >= o) { if (document.activeElement===we) { w=o-0.05; we.value=w; } else { o=w+0.05; oe.value=o; } }
+    document.getElementById(type+'-warn-val').textContent = w.toFixed(2); document.getElementById(type+'-ok-val').textContent = o.toFixed(2);
+    const min=0.05, max=0.90, wp=((w-min)/(max-min))*100, op=((o-min)/(max-min))*100;
+    document.getElementById(type+'-fill').style.background = `linear-gradient(to right,#f85149 0%,#f85149 ${wp}%,#f59e0b ${wp}%,#f59e0b ${op}%,#3fb950 ${op}%,#3fb950 100%)`;
 }
 
 async function applyThresholds() {
     const ho=document.getElementById('hardhat-ok').value, hw=document.getElementById('hardhat-warn').value, vo=document.getElementById('vest-ok').value, vw=document.getElementById('vest-warn').value;
-    await fetch(`/api/thresholds?hardhat_ok=${ho}&hardhat_warn=${hw}&vest_ok=${vo}&vest_warn=${vw}`,{method:'POST'});
+    await fetch(`/api/thresholds?hardhat_ok=${ho}&hardhat_warn=${hw}&vest_ok=${vo}&vest_warn=${vw}`, {method:'POST'});
     showToast('Thresholds updated','success');
 }
 
 async function fetchThresholds() {
     try {
-        const res = await fetch('/api/thresholds');
-        const data = await res.json();
-        const th = data?.thresholds || {};
-
-        const hardhatWarn = parseFloat(th?.hardhat?.warn);
-        const hardhatOk = parseFloat(th?.hardhat?.ok);
-        const vestWarn = parseFloat(th?.vest?.warn);
-        const vestOk = parseFloat(th?.vest?.ok);
-
-        if (!Number.isNaN(hardhatWarn)) document.getElementById('hardhat-warn').value = hardhatWarn.toFixed(2);
-        if (!Number.isNaN(hardhatOk)) document.getElementById('hardhat-ok').value = hardhatOk.toFixed(2);
-        if (!Number.isNaN(vestWarn)) document.getElementById('vest-warn').value = vestWarn.toFixed(2);
-        if (!Number.isNaN(vestOk)) document.getElementById('vest-ok').value = vestOk.toFixed(2);
-    } catch (e) {
-        // Keep existing slider defaults if endpoint is temporarily unavailable.
-    }
-
-    onDualSlider('hardhat');
-    onDualSlider('vest');
+        const res = await fetch('/api/thresholds'); const data = await res.json(); const th = data?.thresholds || {};
+        const hw = parseFloat(th?.hardhat?.warn), ho = parseFloat(th?.hardhat?.ok), vw = parseFloat(th?.vest?.warn), vo = parseFloat(th?.vest?.ok);
+        if (!isNaN(hw)) document.getElementById('hardhat-warn').value = hw.toFixed(2);
+        if (!isNaN(ho)) document.getElementById('hardhat-ok').value   = ho.toFixed(2);
+        if (!isNaN(vw)) document.getElementById('vest-warn').value    = vw.toFixed(2);
+        if (!isNaN(vo)) document.getElementById('vest-ok').value      = vo.toFixed(2);
+    } catch(e) {}
+    onDualSlider('hardhat'); onDualSlider('vest');
 }
 
-function onRouterSliderInput() {
-    const slider = document.getElementById('router-min-side');
-    const val = parseInt(slider.value, 10);
-    document.getElementById('router-min-side-val').value = val;
-}
+function onRouterSliderInput() { const v = parseInt(document.getElementById('router-min-side').value,10); document.getElementById('router-min-side-val').value = v; }
+function getNormalizedRouterValue() { const slider=document.getElementById('router-min-side'),input=document.getElementById('router-min-side-val'); let v=parseInt(input.value,10); if(isNaN(v))v=parseInt(slider.value,10); v=Math.max(32,Math.min(512,v)); slider.value=v; input.value=v; return v; }
+function onRouterValueInput() {}
+function onRouterValueKeydown(e) { if (e.key==='Enter'){e.preventDefault();applyRouterConfig();} }
+async function fetchRouterConfig() { try { const res=await fetch('/api/router_config'); const data=await res.json(); const v=Math.round(data.min_side_px||110); document.getElementById('router-min-side').value=v; document.getElementById('router-min-side-val').value=v; onRouterSliderInput(); } catch(e){onRouterSliderInput();} }
+async function applyRouterConfig() { const v=getNormalizedRouterValue(); const res=await fetch(`/api/router_config?min_side_px=${v}`,{method:'POST'}); if(res.ok) showToast('Router threshold updated','success'); else showToast('Failed to update router threshold','error'); }
 
-function getNormalizedRouterValue() {
-    const slider = document.getElementById('router-min-side');
-    const input = document.getElementById('router-min-side-val');
-
-    const min = parseInt(slider.min, 10);
-    const max = parseInt(slider.max, 10);
-    let val = parseInt(input.value, 10);
-
-    if (Number.isNaN(val)) {
-        val = parseInt(slider.value, 10);
-    }
-
-    val = Math.max(min, Math.min(max, val));
-
-    slider.value = val;
-    input.value = val;
-    return val;
-}
-
-function onRouterValueInput() {
-    // Allow free typing while editing; normalize only on blur/Enter.
-}
-
-function onRouterValueKeydown(event) {
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        applyRouterConfig();
-    }
-}
-
-async function fetchRouterConfig() {
-    try {
-        const res = await fetch('/api/router_config');
-        const data = await res.json();
-        const val = Math.round(data.min_side_px || 110);
-        const slider = document.getElementById('router-min-side');
-        const input = document.getElementById('router-min-side-val');
-        slider.value = val;
-        input.value = val;
-        onRouterSliderInput();
-    } catch (e) {
-        onRouterSliderInput();
-    }
-}
-
-async function applyRouterConfig() {
-    const val = getNormalizedRouterValue();
-    const res = await fetch(`/api/router_config?min_side_px=${val}`, { method: 'POST' });
-    if (res.ok) {
-        showToast('Router threshold updated', 'success');
-    } else {
-        showToast('Failed to update router threshold', 'error');
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Zone editor — clean rewrite
-// ---------------------------------------------------------------------------
-let zoneEditingCamId = null;
-let zonePoints = [];
-let zoneFrameW = 960;
-let zoneFrameH = 720;
-let zoneCanvasScale = 1;
-let zoneCanvasOffsetX = 0;
-let zoneCanvasOffsetY = 0;
-let zoneSnapshotUrl = null;
+// ============================================================
+// Zone editor
+// ============================================================
+let zoneEditingCamId=null, zonePoints=[], zoneFrameW=960, zoneFrameH=720, zoneCanvasScale=1, zoneCanvasOffsetX=0, zoneCanvasOffsetY=0, zoneSnapshotUrl=null;
 
 function computeZoneViewport() {
-    const wrap = document.getElementById('zone-canvas-wrap');
-    const canvas = document.getElementById('zone-canvas');
-    const img = document.getElementById('zone-frozen-img');
-    if (!wrap || !canvas || !img) return;
-
-    const wrapW = Math.max(1, wrap.clientWidth);
-    const wrapH = Math.max(1, wrap.clientHeight);
-    canvas.width = wrapW;
-    canvas.height = wrapH;
-
-    zoneCanvasScale = Math.min(wrapW / zoneFrameW, wrapH / zoneFrameH);
-    const renderW = zoneFrameW * zoneCanvasScale;
-    const renderH = zoneFrameH * zoneCanvasScale;
-    zoneCanvasOffsetX = (wrapW - renderW) / 2;
-    zoneCanvasOffsetY = (wrapH - renderH) / 2;
-
-    img.style.left = `${zoneCanvasOffsetX}px`;
-    img.style.top = `${zoneCanvasOffsetY}px`;
-    img.style.width = `${renderW}px`;
-    img.style.height = `${renderH}px`;
+    const wrap=document.getElementById('zone-canvas-wrap'),canvas=document.getElementById('zone-canvas'),img=document.getElementById('zone-frozen-img');
+    if(!wrap||!canvas||!img)return;
+    const wrapW=Math.max(1,wrap.clientWidth),wrapH=Math.max(1,wrap.clientHeight);
+    canvas.width=wrapW; canvas.height=wrapH;
+    zoneCanvasScale=Math.min(wrapW/zoneFrameW,wrapH/zoneFrameH);
+    const renderW=zoneFrameW*zoneCanvasScale,renderH=zoneFrameH*zoneCanvasScale;
+    zoneCanvasOffsetX=(wrapW-renderW)/2; zoneCanvasOffsetY=(wrapH-renderH)/2;
+    img.style.left=`${zoneCanvasOffsetX}px`; img.style.top=`${zoneCanvasOffsetY}px`; img.style.width=`${renderW}px`; img.style.height=`${renderH}px`;
 }
-
-function frameToCanvasPoint(p) {
-    return {
-        x: zoneCanvasOffsetX + (p.x * zoneCanvasScale),
-        y: zoneCanvasOffsetY + (p.y * zoneCanvasScale),
-    };
-}
-
-function canvasToFramePoint(x, y) {
-    return {
-        x: (x - zoneCanvasOffsetX) / zoneCanvasScale,
-        y: (y - zoneCanvasOffsetY) / zoneCanvasScale,
-    };
-}
-
-function isInsideZoneImage(x, y) {
-    return (
-        x >= zoneCanvasOffsetX &&
-        y >= zoneCanvasOffsetY &&
-        x <= zoneCanvasOffsetX + zoneFrameW * zoneCanvasScale &&
-        y <= zoneCanvasOffsetY + zoneFrameH * zoneCanvasScale
-    );
-}
+function frameToCanvasPoint(p){return{x:zoneCanvasOffsetX+(p.x*zoneCanvasScale),y:zoneCanvasOffsetY+(p.y*zoneCanvasScale)};}
+function canvasToFramePoint(x,y){return{x:(x-zoneCanvasOffsetX)/zoneCanvasScale,y:(y-zoneCanvasOffsetY)/zoneCanvasScale};}
+function isInsideZoneImage(x,y){return x>=zoneCanvasOffsetX&&y>=zoneCanvasOffsetY&&x<=zoneCanvasOffsetX+zoneFrameW*zoneCanvasScale&&y<=zoneCanvasOffsetY+zoneFrameH*zoneCanvasScale;}
 
 async function openZoneEditor(camId) {
-    zoneEditingCamId = camId;
-    zonePoints = [];
-
-    // Fetch snapshot
-    const snapRes = await fetch(`/snapshot/${camId}?t=${Date.now()}`);
-    if (!snapRes.ok) { showToast('Failed to get snapshot', 'error'); return; }
-
-    zoneFrameW = parseInt(snapRes.headers.get('X-Frame-Width') || '960');
-    zoneFrameH = parseInt(snapRes.headers.get('X-Frame-Height') || '720');
-    const blob = await snapRes.blob();
-    if (zoneSnapshotUrl) URL.revokeObjectURL(zoneSnapshotUrl);
-    zoneSnapshotUrl = URL.createObjectURL(blob);
-
-    // Pause inference
-    await fetch(`/api/cameras/${camId}/pause`, { method: 'POST' });
-
-    // Set frozen image
-    const img = document.getElementById('zone-frozen-img');
-    img.src = zoneSnapshotUrl;
-
-    // Show modal
+    zoneEditingCamId=camId; zonePoints=[];
+    const snapRes=await fetch(`/snapshot/${camId}?t=${Date.now()}`);
+    if(!snapRes.ok){showToast('Failed to get snapshot','error');return;}
+    zoneFrameW=parseInt(snapRes.headers.get('X-Frame-Width')||'960'); zoneFrameH=parseInt(snapRes.headers.get('X-Frame-Height')||'720');
+    const blob=await snapRes.blob(); if(zoneSnapshotUrl)URL.revokeObjectURL(zoneSnapshotUrl); zoneSnapshotUrl=URL.createObjectURL(blob);
+    await fetch(`/api/cameras/${camId}/pause`,{method:'POST'});
+    document.getElementById('zone-frozen-img').src=zoneSnapshotUrl;
     document.getElementById('zone-modal').classList.remove('hidden');
-    const cam = activeCameras[camId];
-    document.getElementById('btn-delete-zone').style.display = cam?.hasZone ? 'flex' : 'none';
-    document.getElementById('zone-hint').textContent = 'Click to place points · Click first point to close · Right-click to undo';
-
+    document.getElementById('btn-delete-zone').style.display=activeCameras[camId]?.hasZone?'flex':'none';
+    document.getElementById('zone-hint').textContent='Click to place points · Click first point to close · Right-click to undo';
     computeZoneViewport();
-
-    // Bind canvas events
-    const canvas = document.getElementById('zone-canvas');
-    canvas.onclick = onZoneClick;
-    canvas.oncontextmenu = (e) => { e.preventDefault(); undoLastPoint(); };
-
+    const canvas=document.getElementById('zone-canvas');
+    canvas.onclick=onZoneClick; canvas.oncontextmenu=(e)=>{e.preventDefault();undoLastPoint();};
     drawZoneCanvas();
-
-    // Load existing zone
-    try {
-        const res = await fetch(`/api/cameras/${camId}/zone`);
-        const data = await res.json();
-        if (data.zone && data.zone.length >= 3) {
-            zonePoints = data.zone.map(([x, y]) => ({ x, y }));
-            drawZoneCanvas();
-        }
-    } catch(e) {}
+    try { const res=await fetch(`/api/cameras/${camId}/zone`); const data=await res.json(); if(data.zone&&data.zone.length>=3){zonePoints=data.zone.map(([x,y])=>({x,y}));drawZoneCanvas();} } catch(e){}
 }
 
 function onZoneClick(e) {
-    const canvas = document.getElementById('zone-canvas');
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const y = (e.clientY - rect.top)  * (canvas.height / rect.height);
-
-    if (!isInsideZoneImage(x, y)) return;
-    const fp = canvasToFramePoint(x, y);
-    const clampedX = Math.max(0, Math.min(zoneFrameW, fp.x));
-    const clampedY = Math.max(0, Math.min(zoneFrameH, fp.y));
-
-    if (zonePoints.length >= 3) {
-        const dx = clampedX - zonePoints[0].x;
-        const dy = clampedY - zonePoints[0].y;
-        if (Math.sqrt(dx*dx + dy*dy) < (18 / zoneCanvasScale)) {
-            drawZoneCanvas(true);
-            document.getElementById('zone-hint').textContent = 'Polygon closed · Click Save to apply';
-            return;
-        }
-    }
-    zonePoints.push({ x: clampedX, y: clampedY });
-    drawZoneCanvas();
-    document.getElementById('zone-hint').textContent = `${zonePoints.length} point${zonePoints.length>1?'s':''} · Click first point to close · Right-click to undo`;
+    const canvas=document.getElementById('zone-canvas'),rect=canvas.getBoundingClientRect();
+    const x=(e.clientX-rect.left)*(canvas.width/rect.width),y=(e.clientY-rect.top)*(canvas.height/rect.height);
+    if(!isInsideZoneImage(x,y))return;
+    const fp=canvasToFramePoint(x,y); const cx=Math.max(0,Math.min(zoneFrameW,fp.x)),cy=Math.max(0,Math.min(zoneFrameH,fp.y));
+    if(zonePoints.length>=3){const dx=cx-zonePoints[0].x,dy=cy-zonePoints[0].y;if(Math.sqrt(dx*dx+dy*dy)<(18/zoneCanvasScale)){drawZoneCanvas(true);document.getElementById('zone-hint').textContent='Polygon closed · Click Save to apply';return;}}
+    zonePoints.push({x:cx,y:cy}); drawZoneCanvas();
+    document.getElementById('zone-hint').textContent=`${zonePoints.length} point${zonePoints.length>1?'s':''} · Click first point to close · Right-click to undo`;
 }
 
-function undoLastPoint() { if (zonePoints.length>0){zonePoints.pop();drawZoneCanvas();} }
-function clearZonePoints() { zonePoints=[]; drawZoneCanvas(); document.getElementById('zone-hint').textContent='Click to place points · Click first point to close · Right-click to undo'; }
+function undoLastPoint(){if(zonePoints.length>0){zonePoints.pop();drawZoneCanvas();}}
+function clearZonePoints(){zonePoints=[];drawZoneCanvas();document.getElementById('zone-hint').textContent='Click to place points · Click first point to close · Right-click to undo';}
 
-function drawZoneCanvas(closed=false) {
-    const canvas=document.getElementById('zone-canvas'), ctx=canvas.getContext('2d');
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    if (!zonePoints.length) return;
-    const points = zonePoints.map(frameToCanvasPoint);
-    if (points.length>=3){ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);points.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.closePath();ctx.fillStyle='rgba(56,139,253,0.18)';ctx.fill();}
+function drawZoneCanvas(closed=false){
+    const canvas=document.getElementById('zone-canvas'),ctx=canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height); if(!zonePoints.length)return;
+    const points=zonePoints.map(frameToCanvasPoint);
+    if(points.length>=3){ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);points.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));ctx.closePath();ctx.fillStyle='rgba(56,139,253,0.18)';ctx.fill();}
     ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);points.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));
-    if(closed)ctx.closePath();
-    ctx.strokeStyle='#388bfd';ctx.lineWidth=2;ctx.setLineDash(closed?[]:[6,3]);ctx.stroke();ctx.setLineDash([]);
+    if(closed)ctx.closePath(); ctx.strokeStyle='#388bfd';ctx.lineWidth=2;ctx.setLineDash(closed?[]:[6,3]);ctx.stroke();ctx.setLineDash([]);
     points.forEach((p,i)=>{ctx.beginPath();ctx.arc(p.x,p.y,i===0?7:5,0,Math.PI*2);ctx.fillStyle=i===0?'#388bfd':'#fff';ctx.strokeStyle='#388bfd';ctx.lineWidth=2;ctx.fill();ctx.stroke();});
 }
 
-async function saveZone() {
-    if (zonePoints.length<3){showToast('Need at least 3 points','error');return;}
-    const points = zonePoints.map(p=>[Math.round(p.x),Math.round(p.y)]);
-    const res = await fetch(`/api/cameras/${zoneEditingCamId}/zone`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(points)});
-    const data = await res.json();
-    if (data.status==='ok') {
-        if(activeCameras[zoneEditingCamId]) activeCameras[zoneEditingCamId].hasZone=true;
-        const btn=document.getElementById(`zone-btn-${zoneEditingCamId}`);
-        if(btn){btn.textContent='◉ ZONE';btn.classList.add('has-zone');}
-        showToast('Zone saved','success');
-        closeZoneEditor();
-    } else showToast('Failed to save zone','error');
+async function saveZone(){
+    if(zonePoints.length<3){showToast('Need at least 3 points','error');return;}
+    const points=zonePoints.map(p=>[Math.round(p.x),Math.round(p.y)]);
+    const res=await fetch(`/api/cameras/${zoneEditingCamId}/zone`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(points)});
+    const data=await res.json();
+    if(data.status==='ok'){if(activeCameras[zoneEditingCamId])activeCameras[zoneEditingCamId].hasZone=true;const btn=document.getElementById(`zone-btn-${zoneEditingCamId}`);if(btn){btn.textContent='◉ ZONE';btn.classList.add('has-zone');}showToast('Zone saved','success');closeZoneEditor();}
+    else showToast('Failed to save zone','error');
 }
 
-async function deleteZone() {
-    if (!confirm('Delete zone?')) return;
+async function deleteZone(){
+    if(!confirm('Delete zone?'))return;
     await fetch(`/api/cameras/${zoneEditingCamId}/zone`,{method:'DELETE'});
-    if(activeCameras[zoneEditingCamId]) activeCameras[zoneEditingCamId].hasZone=false;
-    const btn=document.getElementById(`zone-btn-${zoneEditingCamId}`);
-    if(btn){btn.textContent='+ ZONE';btn.classList.remove('has-zone');}
-    showToast('Zone deleted','success');
-    closeZoneEditor();
+    if(activeCameras[zoneEditingCamId])activeCameras[zoneEditingCamId].hasZone=false;
+    const btn=document.getElementById(`zone-btn-${zoneEditingCamId}`);if(btn){btn.textContent='+ ZONE';btn.classList.remove('has-zone');}
+    showToast('Zone deleted','success');closeZoneEditor();
 }
 
-async function closeZoneEditor() {
-    if (zoneEditingCamId) {
-        await fetch(`/api/cameras/${zoneEditingCamId}/resume`,{method:'POST'});
-        // Re-attach stream img src
-        const img = document.querySelector(`[data-cam-id="${zoneEditingCamId}"] img`);
-        if (img) img.src = `/video_feed/${zoneEditingCamId}?t=${Date.now()}`;
-    }
+async function closeZoneEditor(){
+    if(zoneEditingCamId){await fetch(`/api/cameras/${zoneEditingCamId}/resume`,{method:'POST'});const img=document.querySelector(`[data-cam-id="${zoneEditingCamId}"] img`);if(img)img.src=`/video_feed/${zoneEditingCamId}?t=${Date.now()}`;}
     document.getElementById('zone-modal').classList.add('hidden');
-    if (zoneSnapshotUrl) {
-        URL.revokeObjectURL(zoneSnapshotUrl);
-        zoneSnapshotUrl = null;
-    }
-    zoneEditingCamId=null; zonePoints=[];
+    if(zoneSnapshotUrl){URL.revokeObjectURL(zoneSnapshotUrl);zoneSnapshotUrl=null;}
+    zoneEditingCamId=null;zonePoints=[];
 }
+window.addEventListener('resize',()=>{if(!zoneEditingCamId)return;computeZoneViewport();drawZoneCanvas();});
 
-window.addEventListener('resize', () => {
-    if (!zoneEditingCamId) return;
-    computeZoneViewport();
-    drawZoneCanvas();
-});
-
-// ---------------------------------------------------------------------------
-// Violations
-// ---------------------------------------------------------------------------
-async function fetchViolations() {
+// ============================================================
+// Violations tab
+// ============================================================
+async function fetchViolations(){
     const grid=document.getElementById('violations-grid');
     grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Fetching…</div>';
     try {
-        const res=await fetch('/api/violations'); const data=(await res.json()).data;
+        const res=await fetch('/api/violations');const data=(await res.json()).data;
         if(!data||!data.length){grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">No records found.</div>';return;}
         grid.innerHTML='';
         data.forEach(item=>{
-            const v=item.violations[0]||{}, imgPath=v.image_path?'/'+v.image_path:'';
+            const v=item.violations[0]||{},imgPath=v.image_path?'/'+v.image_path:'';
             const model=((item.reported_by_model||v.reported_by_model||'unknown')+'').toUpperCase();
             const timeStr=new Date(item.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-            const card=document.createElement('div'); card.className='violation-card';
-            const imgDiv=document.createElement('div'); imgDiv.className='card-image';
+            const card=document.createElement('div');card.className='violation-card';
+            const imgDiv=document.createElement('div');imgDiv.className='card-image';
             if(imgPath){const img=document.createElement('img');img.src=imgPath;img.alt='Violation';img.addEventListener('error',()=>{imgDiv.innerHTML='<span style="font-size:11px;color:var(--text-muted)">Image not found</span>';});imgDiv.appendChild(img);}
             const badge=document.createElement('div');badge.className='card-id-badge';badge.textContent='ID '+(v.tracker_id!=null?v.tracker_id:'—');imgDiv.appendChild(badge);
             const body=document.createElement('div');body.className='card-body';
@@ -838,59 +861,45 @@ async function fetchViolations() {
             card.addEventListener('click',()=>openLightbox(imgPath,v.tracker_id,timeStr,item.violations,model));
             card.appendChild(imgDiv);card.appendChild(body);grid.appendChild(card);
         });
-    } catch { grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Failed to connect.</div>'; }
+    } catch{grid.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;">Failed to connect.</div>';}
 }
 
-async function flushImages() {
+async function flushImages(){
     if(!confirm('Delete all local violation images?'))return;
-    const res=await fetch('/api/flush',{method:'POST'}); const d=await res.json();
+    const res=await fetch('/api/flush',{method:'POST'});const d=await res.json();
     if(d.status==='success'){showToast(d.message,'success');fetchViolations();}else showToast('Flush failed.','error');
 }
 
-// ---------------------------------------------------------------------------
-// PDF Export
-// ---------------------------------------------------------------------------
-async function downloadPDF() {
-    const btn = document.getElementById('btn-pdf');
-    const sid = document.getElementById('session-select').value;
-    const url = sid ? `/api/report/pdf?session_id=${encodeURIComponent(sid)}` : '/api/report/pdf';
-    btn.textContent = 'Generating…';
-    btn.disabled = true;
-    try {
-        const res = await fetch(url);
-        if (!res.ok) { showToast('Failed to generate report', 'error'); return; }
-        const blob = await res.blob();
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        const cd = res.headers.get('Content-Disposition') || '';
-        const match = cd.match(/filename=([^;]+)/);
-        a.download = match ? match[1].trim() : 'ppe_report.pdf';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(a.href);
-        showToast('Report downloaded', 'success');
-    } catch(e) {
-        showToast('Network error', 'error');
-    } finally {
-        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M10 2v3h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 9.5h5M5.5 11.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Export PDF';
-        btn.disabled = false;
-    }
+// ============================================================
+// PDF export
+// ============================================================
+async function downloadPDF(){
+    const btn=document.getElementById('btn-pdf'),sid=document.getElementById('session-select').value;
+    const url=sid?`/api/report/pdf?session_id=${encodeURIComponent(sid)}`:'/api/report/pdf';
+    btn.textContent='Generating…';btn.disabled=true;
+    try{
+        const res=await fetch(url);if(!res.ok){showToast('Failed to generate report','error');return;}
+        const blob=await res.blob();const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+        const cd=res.headers.get('Content-Disposition')||'';const match=cd.match(/filename=([^;]+)/);
+        a.download=match?match[1].trim():'ppe_report.pdf';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);
+        showToast('Report downloaded','success');
+    }catch(e){showToast('Network error','error');}
+    finally{btn.innerHTML='<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 2h7l3 3v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M10 2v3h3" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.5 9.5h5M5.5 11.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Export PDF';btn.disabled=false;}
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================
 // Analytics
-// ---------------------------------------------------------------------------
-async function fetchStats() {
-    try {
+// ============================================================
+async function fetchStats(){
+    try{
         const ss=document.getElementById('session-select');
         if(ss.options.length<=1){const r=await fetch('/api/sessions');const d=await r.json();(d.sessions||[]).forEach(s=>{const o=document.createElement('option');o.value=s.id;const dt=new Date(s.created_at).toLocaleString([],{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});o.textContent=`${s.id} (${dt})`;ss.appendChild(o);});}
-        const sid=ss.value; const res=await fetch(sid?`/api/stats?session_id=${sid}`:'/api/stats'); const data=await res.json();
+        const sid=ss.value;const res=await fetch(sid?`/api/stats?session_id=${sid}`:'/api/stats');const data=await res.json();
         const total=data.total||0,hardhat=data.none_hardhat||0,vest=data.none_vest||0;
-        document.getElementById('stat-total').textContent=total; document.getElementById('stat-hardhat').textContent=hardhat; document.getElementById('stat-vest').textContent=vest;
-        const hourly=data.hourly||{}, peakH=Object.keys(hourly).reduce((a,b)=>hourly[a]>hourly[b]?a:b,Object.keys(hourly)[0]);
+        document.getElementById('stat-total').textContent=total;document.getElementById('stat-hardhat').textContent=hardhat;document.getElementById('stat-vest').textContent=vest;
+        const hourly=data.hourly||{},peakH=Object.keys(hourly).reduce((a,b)=>hourly[a]>hourly[b]?a:b,Object.keys(hourly)[0]);
         if(peakH!==undefined){document.getElementById('stat-peak').textContent=String(peakH).padStart(2,'0')+':00';document.getElementById('peak-label').textContent=`Peak: ${String(peakH).padStart(2,'0')}:00`;}
-        if(data.top_offenders?.length) document.getElementById('stat-top-id').textContent='ID '+data.top_offenders[0].id;
+        if(data.top_offenders?.length)document.getElementById('stat-top-id').textContent='ID '+data.top_offenders[0].id;
         const chart=document.getElementById('hourly-chart');chart.innerHTML='';
         const maxVal=Math.max(...Array.from({length:24},(_,h)=>hourly[h]||0),1);
         for(let h=0;h<24;h++){const val=hourly[h]||0,pct=(val/maxVal)*100,isPeak=String(h)===String(peakH);const bar=document.createElement('div');bar.title=`${String(h).padStart(2,'0')}:00 — ${val}`;bar.style.cssText=`flex:1;height:${Math.max(pct,2)}%;background:${isPeak?'#f59e0b':val>0?'var(--danger)':'var(--surface-3)'};border-radius:2px 2px 0 0;opacity:${val>0?0.75:0.3};cursor:default;transition:opacity 0.15s;`;bar.addEventListener('mouseenter',()=>bar.style.opacity='1');bar.addEventListener('mouseleave',()=>bar.style.opacity=val>0?'0.75':'0.3');chart.appendChild(bar);}
@@ -900,13 +909,13 @@ async function fetchStats() {
         document.getElementById('donut-hardhat-pct').textContent=Math.round(hP*100)+'%';document.getElementById('donut-vest-pct').textContent=Math.round(vP*100)+'%';
         const offEl=document.getElementById('top-offenders');offEl.innerHTML='';const mc=data.top_offenders?.[0]?.count||1;
         (data.top_offenders||[]).forEach(o=>{const pct=(o.count/mc)*100,row=document.createElement('div');row.className='offender-row';row.innerHTML=`<span class="offender-id">ID ${o.id}</span><div class="offender-bar-wrap"><div class="offender-bar" style="width:${pct}%"></div></div><span class="offender-count">${o.count}</span>`;offEl.appendChild(row);});
-    } catch(e){console.error(e);}
+    }catch(e){console.error(e);}
 }
 
-// ---------------------------------------------------------------------------
-// Lightbox
-// ---------------------------------------------------------------------------
-function openLightbox(imgPath,trackerId,timeStr,violations,model='UNKNOWN') {
+// ============================================================
+// Lightbox (violation log)
+// ============================================================
+function openLightbox(imgPath,trackerId,timeStr,violations,model='UNKNOWN'){
     document.getElementById('lb-id').textContent='ID '+(trackerId!=null?trackerId:'—');document.getElementById('lb-time-header').textContent=timeStr;
     const imgEl=document.getElementById('lb-img');if(imgPath){imgEl.src=imgPath;imgEl.style.display='';}else{imgEl.src='';imgEl.style.display='none';}
     const tagsEl=document.getElementById('lb-tags');tagsEl.innerHTML='';
@@ -916,72 +925,495 @@ function openLightbox(imgPath,trackerId,timeStr,violations,model='UNKNOWN') {
 }
 function closeLightbox(){document.getElementById('lightbox').classList.add('hidden');document.body.style.overflow='';}
 function handleLightboxBackdropClick(e){if(e.target===document.getElementById('lightbox')||e.target.classList.contains('lightbox-backdrop'))closeLightbox();}
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeLightbox();closeZoneEditor();}});
 
-// ---------------------------------------------------------------------------
+// ============================================================
 // Toast & polling
-// ---------------------------------------------------------------------------
+// ============================================================
 function showToast(msg,type){const c=document.getElementById('toast-container'),t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;c.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},3500);}
 
-let pollInterval=null;
-let seenViolationIds=new Set();
+let pollInterval=null, seenViolationIds=new Set();
+function showViolationToast(row){const v=row.violations?.[0]||{};const types=(row.violations||[]).map(x=>x.violation_type.replace('none_','').toUpperCase()).join(', ');const model=((row.reported_by_model||v.reported_by_model||'unknown')+'').toUpperCase();const time=new Date(row.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});const c=document.getElementById('toast-container'),t=document.createElement('div');t.className='toast violation';t.innerHTML=`<div class="vio-title">🚨 PPE Violation</div><div class="vio-detail">ID ${v.tracker_id??'—'} | ${types}</div><div class="vio-detail">Model ${model} | ${time}</div>`;c.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},6000);}
+function startPolling(){if(pollInterval)return;pollInterval=setInterval(async()=>{if(!isStreaming)return;try{const res=await fetch('/api/violations'),data=await res.json(),rows=data.data||[];if(!rows.length)return;if(seenViolationIds.size===0){rows.forEach(r=>seenViolationIds.add(r.id));return;}const newRows=rows.filter(r=>!seenViolationIds.has(r.id));if(!newRows.length)return;newRows.slice(0,3).forEach(showViolationToast);rows.forEach(r=>seenViolationIds.add(r.id));if(seenViolationIds.size>500)seenViolationIds=new Set(rows.map(r=>r.id));}catch(e){}},5000);}
+function stopPolling(){if(pollInterval){clearInterval(pollInterval);pollInterval=null;}seenViolationIds.clear();}
 
-function showViolationToast(row){
-    const v=row.violations?.[0]||{};
-    const types=(row.violations||[]).map(x=>x.violation_type.replace('none_','').toUpperCase()).join(', ');
-    const model=((row.reported_by_model||v.reported_by_model||'unknown')+'').toUpperCase();
-    const time=new Date(row.created_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    const c=document.getElementById('toast-container'),t=document.createElement('div');
-    t.className='toast violation';
-    t.innerHTML=`<div class="vio-title">🚨 PPE Violation</div><div class="vio-detail">ID ${v.tracker_id??'—'} | ${types}</div><div class="vio-detail">Model ${model} | ${time}</div>`;
-    c.appendChild(t);
-    setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},6000);
-}
+// ============================================================
+// Label Studio
+// ============================================================
+const LABEL_STORAGE_KEY = 'ppe_labels_v2';
+const ALL_PPE_ITEMS = ['hardhat', 'vest'];
 
-function startPolling(){
-    if(pollInterval)return;
-    pollInterval=setInterval(async()=>{
-        if(!isStreaming)return;
+// labelMergedRows: array of merged events grouped by (session_id, tracker_id)
+// Each merged event = { mergeKey, session_id, tracker_id, rows[], predicted[], imgPath, model, firstTs }
+let labelAllRows    = [];   // raw from API
+let labelMerged     = [];   // after merge
+let labelFiltered   = [];   // after filter
+let labelFilter     = 'all';
+let lbIndex         = 0;
+let lbActive        = false;
+
+// ── Storage ──────────────────────────────────────────────────
+function loadLabelsFromStorage(){try{const r=localStorage.getItem(LABEL_STORAGE_KEY);return r?JSON.parse(r):{};} catch{return {};}}
+function saveLabelsToStorage(labels){try{localStorage.setItem(LABEL_STORAGE_KEY,JSON.stringify(labels));}catch(e){showToast('Storage full — export labels now','error');}}
+function getLabelForEvent(ev){return loadLabelsFromStorage()[ev.mergeKey]||null;}
+
+// ── Offline queue ─────────────────────────────────────────
+const LABEL_QUEUE_KEY = 'ppe_label_queue_v1';
+function loadQueue(){try{const r=localStorage.getItem(LABEL_QUEUE_KEY);return r?JSON.parse(r):[]}catch{return [];}}
+function saveQueue(q){try{localStorage.setItem(LABEL_QUEUE_KEY,JSON.stringify(q));}catch(e){}}
+function enqueueLabel(payload){const q=loadQueue();q.push(payload);saveQueue(q);}
+
+async function flushLabelQueue(){
+    const q=loadQueue();
+    if(!q.length) return;
+    const remaining=[];
+    for(const payload of q){
         try{
-            const res=await fetch('/api/violations'),data=await res.json(),rows=data.data||[];
-            if(!rows.length)return;
-
-            // Prime seen IDs on first poll so historical violations do not replay.
-            if(seenViolationIds.size===0){
-                rows.forEach(r=>seenViolationIds.add(r.id));
-                return;
-            }
-
-            const newRows=rows.filter(r=>!seenViolationIds.has(r.id));
-            if(!newRows.length)return;
-
-            newRows.slice(0,3).forEach(showViolationToast);
-            rows.forEach(r=>seenViolationIds.add(r.id));
-
-            // Keep memory bounded while preserving recent IDs from API window.
-            if(seenViolationIds.size>500){
-                seenViolationIds=new Set(rows.map(r=>r.id));
-            }
-        }catch(e){}
-    },5000);
+            const r=await fetch('/api/labels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+            if(!r.ok) remaining.push(payload);
+        }catch{remaining.push(payload);}
+    }
+    saveQueue(remaining);
+    if(remaining.length < q.length) showToast(`Synced ${q.length-remaining.length} queued labels`,'success');
 }
 
-function stopPolling(){
-    if(pollInterval){clearInterval(pollInterval);pollInterval=null;}
-    seenViolationIds.clear();
+async function syncLabelToBackend(payload){
+    try{
+        const r=await fetch('/api/labels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        if(!r.ok) throw new Error(r.statusText);
+    }catch{enqueueLabel(payload);}
 }
 
-// ---------------------------------------------------------------------------
+function buildLabelPayload(ev, humanMissingItems, skipped, perItem, aggregate){
+    const imgPath = ev.imgPath ? ev.imgPath.replace(/^\//,'') : null;
+    return {
+        merge_key: ev.mergeKey, session_id: ev.session_id, tracker_id: String(ev.tracker_id),
+        predicted_missing: ev.predicted.map(p=>p.replace('none_','')),
+        human_missing: skipped ? null : humanMissingItems,
+        per_item: perItem, aggregate: aggregate, skipped: skipped, model: ev.model,
+        row_ids: ev.rows.map(r=>String(r.id)), first_created_at: ev.firstTs,
+        labeled_by: 'annotator', image_path: imgPath, threshold_snapshot: {},
+    };
+}
+
+function setLabelForEvent(ev, humanMissingItems, skipped){
+    // humanMissingItems: string[] of items user says are ACTUALLY missing e.g. ['hardhat']
+    // predicted: items pipeline flagged as missing
+    const labels = loadLabelsFromStorage();
+    const predicted = ev.predicted; // e.g. ['none_hardhat','none_vest']
+    const predItems = predicted.map(p => p.replace('none_',''));
+
+    // Derive per-item verdicts
+    const perItem = {};
+    ALL_PPE_ITEMS.forEach(item => {
+        const pipelineFlagged = predItems.includes(item);
+        const humanConfirmed  = humanMissingItems.includes(item);
+        if (pipelineFlagged && humanConfirmed)  perItem[item] = 'tp';
+        else if (pipelineFlagged && !humanConfirmed) perItem[item] = 'fp';
+        else if (!pipelineFlagged && humanConfirmed) perItem[item] = 'fn';
+        else perItem[item] = 'tn'; // both agree: not missing
+    });
+
+    // Aggregate verdict for card badge
+    const itemVerdicts = Object.values(perItem);
+    let aggregate;
+    if (skipped) aggregate = 'skip';
+    else if (itemVerdicts.some(v=>v==='fp')) aggregate = 'has-fp';
+    else if (itemVerdicts.some(v=>v==='fn')) aggregate = 'has-fn';
+    else aggregate = 'all-tp';
+
+    const entry = {
+        merge_key:           ev.mergeKey,
+        session_id:          ev.session_id,
+        tracker_id:          ev.tracker_id,
+        predicted_missing:   predItems,
+        human_missing:       skipped ? null : humanMissingItems,
+        per_item:            perItem,
+        aggregate:           aggregate,
+        skipped:             skipped,
+        model:               ev.model,
+        row_ids:             ev.rows.map(r=>r.id),
+        first_created_at:    ev.firstTs,
+        labeled_at:          new Date().toISOString(),
+    };
+    labels[ev.mergeKey] = entry;
+    saveLabelsToStorage(labels);
+
+    // Async backend sync (non-blocking; offline queue fallback)
+    syncLabelToBackend(buildLabelPayload(ev, humanMissingItems, skipped, perItem, aggregate));
+}
+
+// ── Merge raw rows ────────────────────────────────────────────
+function mergeRows(rows){
+    // Group by (session_id, tracker_id) — use latest image from the group
+    const map = new Map();
+    rows.forEach(row => {
+        const tid = row.violations?.[0]?.tracker_id ?? 'unknown';
+        const sid = row.session_id || 'nosession';
+        const key = `${sid}__${tid}`;
+        if (!map.has(key)) {
+            map.set(key, {
+                mergeKey:   key,
+                session_id: sid,
+                tracker_id: tid,
+                rows:       [],
+                predicted:  [],
+                imgPath:    '',
+                model:      '',
+                firstTs:    row.created_at,
+                confSum:    0,
+                confN:      0,
+                avgConf:    null,
+            });
+        }
+        const ev = map.get(key);
+        ev.rows.push(row);
+        // Collect all unique predicted violation types
+        (row.violations||[]).forEach(v => {
+            if (!ev.predicted.includes(v.violation_type)) ev.predicted.push(v.violation_type);
+            // Accumulate confidence across all violation items
+            if (v.confidence != null) { ev.confSum += v.confidence; ev.confN++; }
+        });
+        // Use image from first row that has one
+        if (!ev.imgPath) {
+            const v0 = row.violations?.[0];
+            if (v0?.image_path) ev.imgPath = '/'+v0.image_path;
+        }
+        // Model from row
+        if (!ev.model) ev.model = (row.reported_by_model || row.violations?.[0]?.reported_by_model || '?').toUpperCase();
+        // Keep earliest timestamp
+        if (row.created_at < ev.firstTs) ev.firstTs = row.created_at;
+    });
+    // Finalise avgConf on each event
+    map.forEach(ev => { ev.avgConf = ev.confN > 0 ? ev.confSum / ev.confN : null; });
+    return Array.from(map.values());
+}
+
+// ── Certainty helpers ─────────────────────────────────────────
+function confClass(c) {
+    if (c == null) return 'conf-mid';
+    if (c >= 0.7)  return 'conf-high';
+    if (c >= 0.4)  return 'conf-mid';
+    return 'conf-low';
+}
+function confLabel(c) {
+    if (c == null) return '?';
+    if (c >= 0.7)  return 'CERTAIN';
+    if (c >= 0.4)  return 'BORDERLINE';
+    return 'UNCERTAIN';
+}
+function confChipHtml(c) {
+    return `<span class="conf-chip ${confClass(c)}">${confLabel(c)}${c != null ? ' '+( c*100).toFixed(0)+'%' : ''}</span>`;
+}
+
+// ── Stats ─────────────────────────────────────────────────────
+function computeLabelStats(){
+    const labels = loadLabelsFromStorage();
+    const vals   = Object.values(labels);
+    // Count at item level for precision/recall
+    let tp=0, fp=0, fn=0, skip=0;
+    vals.forEach(l => {
+        if (l.skipped) { skip++; return; }
+        Object.values(l.per_item||{}).forEach(v => {
+            if (v==='tp') tp++;
+            else if (v==='fp') fp++;
+            else if (v==='fn') fn++;
+        });
+    });
+    const prec   = tp+fp>0 ? tp/(tp+fp) : null;
+    const recall = tp+fn>0 ? tp/(tp+fn) : null;
+    return { tp, fp, fn, skip, prec, recall, total: vals.length };
+}
+
+function renderLabelSummary(){
+    const s = computeLabelStats();
+    document.getElementById('lstat-total-val').textContent  = labelMerged.length;
+    document.getElementById('lstat-tp-val').textContent     = s.tp;
+    document.getElementById('lstat-fp-val').textContent     = s.fp;
+    document.getElementById('lstat-fn-val').textContent     = s.fn;
+    const precEl=document.getElementById('lstat-prec-el'), recallEl=document.getElementById('lstat-recall-el');
+    if (s.prec!==null) {
+        document.getElementById('lstat-prec-val').textContent   = (s.prec*100).toFixed(1)+'%';
+        document.getElementById('lstat-recall-val').textContent = s.recall!==null ? (s.recall*100).toFixed(1)+'%' : '—';
+        precEl.style.display=''; recallEl.style.display='';
+    } else { precEl.style.display='none'; recallEl.style.display='none'; }
+}
+
+// ── Filter ────────────────────────────────────────────────────
+function setLabelFilter(f){
+    labelFilter=f;
+    ['all','unlabeled','fp','fn'].forEach(id=>{const el=document.getElementById('filter-'+id);if(el)el.classList.toggle('active',id===f);});
+    applyFilter(); renderLabelGrid();
+}
+
+function applyFilter(){
+    const labels = loadLabelsFromStorage();
+    if (labelFilter==='all')       labelFiltered = labelMerged;
+    else if (labelFilter==='unlabeled') labelFiltered = labelMerged.filter(ev=>!labels[ev.mergeKey]);
+    else if (labelFilter==='fp')   labelFiltered = labelMerged.filter(ev=>labels[ev.mergeKey]?.aggregate==='has-fp');
+    else if (labelFilter==='fn')   labelFiltered = labelMerged.filter(ev=>labels[ev.mergeKey]?.aggregate==='has-fn');
+    else labelFiltered = labelMerged;
+}
+
+// ── Render grid ───────────────────────────────────────────────
+function renderLabelGrid(){
+    const grid = document.getElementById('label-grid');
+    grid.innerHTML = '';
+    if (!labelFiltered.length) {
+        grid.innerHTML = `<div class="label-empty"><div class="label-empty-title">No records</div><div class="label-empty-sub">${labelFilter==='unlabeled'?'All events labeled!':'No items match filter'}</div></div>`;
+        return;
+    }
+    const labels = loadLabelsFromStorage();
+    labelFiltered.forEach((ev, idx) => {
+        const lbl      = labels[ev.mergeKey];
+        const timeStr  = new Date(ev.firstTs).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        const card     = document.createElement('div');
+        const aggClass = lbl ? (lbl.skipped ? 'skipped' : lbl.aggregate) : '';
+        card.className = `label-card${aggClass ? ' '+aggClass : ''}`;
+
+        // Image
+        const imgDiv = document.createElement('div'); imgDiv.className = 'label-card-img';
+        if (ev.imgPath) {
+            const img = document.createElement('img'); img.src = ev.imgPath; img.alt = 'violation';
+            img.addEventListener('error', ()=>{ imgDiv.innerHTML='<span style="font-size:10px;color:var(--text-muted)">No image</span>'; });
+            imgDiv.appendChild(img);
+        } else { imgDiv.innerHTML = '<span style="font-size:10px;color:var(--text-muted)">No image</span>'; }
+
+        // Badge
+        if (lbl) {
+            const badge = document.createElement('div');
+            const badgeMap = {'all-tp':'ALL TP','has-fp':'HAS FP','has-fn':'HAS FN','skipped':'SKIP'};
+            badge.className = `label-badge ${lbl.skipped?'skipped':lbl.aggregate}`;
+            badge.textContent = badgeMap[lbl.skipped?'skipped':lbl.aggregate] || '?';
+            imgDiv.appendChild(badge);
+        } else {
+            const dot = document.createElement('div'); dot.className = 'unlabeled-dot';
+            imgDiv.appendChild(dot);
+        }
+
+        // Body
+        const body = document.createElement('div'); body.className = 'label-card-body';
+        const predTags = ev.predicted.map(p=>`<span class="lc-vtag">${p.replace('none_','').toUpperCase()}</span>`).join('');
+        body.innerHTML = `
+            <div class="label-card-id">ID ${ev.tracker_id} · ${ev.model.slice(0,8)}</div>
+            <div class="label-card-time">${timeStr} · ${ev.rows.length} event${ev.rows.length>1?'s':''}</div>
+            <div class="label-card-tags" style="margin-bottom:4px;">${predTags}</div>
+            <div>${confChipHtml(ev.avgConf)}</div>`;
+
+        card.appendChild(imgDiv); card.appendChild(body);
+        card.addEventListener('click', ()=>openLabelLb(idx));
+        grid.appendChild(card);
+    });
+}
+
+// ── Lightbox ──────────────────────────────────────────────────
+function openLabelLb(idx){
+    lbIndex=idx; lbActive=true;
+    document.getElementById('label-lightbox').classList.remove('hidden');
+    document.body.style.overflow='hidden';
+    renderLbContent();
+}
+
+function closeLabelLb(){
+    lbActive=false;
+    document.getElementById('label-lightbox').classList.add('hidden');
+    document.body.style.overflow='';
+    renderLabelGrid(); renderLabelSummary();
+}
+
+// Checkbox state for current event
+let lbChecked = new Set();
+
+function renderLbContent(){
+    if (!labelFiltered.length) return;
+    const ev    = labelFiltered[lbIndex];
+    const total = labelFiltered.length;
+
+    document.getElementById('llb-counter').textContent = `${lbIndex+1} / ${total}`;
+    document.getElementById('label-progress-bar').style.width = `${((lbIndex+1)/total)*100}%`;
+
+    // Image
+    const img = document.getElementById('llb-img');
+    img.src = ev.imgPath || ''; img.style.display = ev.imgPath ? '' : 'none';
+
+    // Current label badge
+    const lbl = getLabelForEvent(ev);
+    const badgeEl = document.getElementById('llb-current-badge');
+    if (lbl) {
+        const bmap = {'all-tp':'✓ ALL TP','has-fp':'✗ HAS FP','has-fn':'△ HAS FN','skipped':'— SKIP'};
+        const cmap = {'all-tp':'#3fb950','has-fp':'#f85149','has-fn':'#f59e0b','skipped':'#484f58'};
+        const k = lbl.skipped ? 'skipped' : lbl.aggregate;
+        badgeEl.textContent = bmap[k]||k; badgeEl.style.color = cmap[k]||'#8b949e';
+        badgeEl.style.background = (cmap[k]||'#484f58')+'33';
+        badgeEl.style.border = `1px solid ${cmap[k]||'#484f58'}66`;
+        badgeEl.style.display = '';
+    } else { badgeEl.style.display='none'; }
+
+    // Pipeline predictions
+    const predsEl = document.getElementById('llb-preds');
+    predsEl.innerHTML = ev.predicted.length
+        ? ev.predicted.map(p=>`<span class="pred-chip">${p.replace('none_','').toUpperCase()}</span>`).join('')
+        : '<span style="font-size:10px;color:var(--text-muted)">none</span>';
+
+    // Tracker info
+    document.getElementById('llb-tracker-info').textContent = `ID ${ev.tracker_id} · ${ev.model.slice(0,8)} · ${ev.rows.length} event${ev.rows.length>1?'s':''}`;
+    const confEl = document.getElementById('llb-conf');
+    if (confEl) confEl.innerHTML = confChipHtml(ev.avgConf);
+
+    // Init checkboxes: pre-check existing label or pipeline prediction
+    lbChecked = new Set();
+    if (lbl && !lbl.skipped && lbl.human_missing) {
+        lbl.human_missing.forEach(i => lbChecked.add(i));
+    } else {
+        // Pre-fill from pipeline prediction as default
+        ev.predicted.forEach(p => lbChecked.add(p.replace('none_','')));
+    }
+    renderCheckboxes(ev);
+}
+
+function renderCheckboxes(ev){
+    const grid = document.getElementById('llb-checkbox-grid');
+    grid.innerHTML = '';
+    ALL_PPE_ITEMS.forEach((item, i) => {
+        const checked = lbChecked.has(item);
+        const isPredicted = ev.predicted.includes('none_'+item);
+        const cb = document.createElement('label');
+        cb.className = `ppe-checkbox${checked?' checked':''}`;
+        cb.innerHTML = `
+            <div class="ppe-cb-box">
+                <svg class="ppe-cb-check" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M1.5 5L4 7.5L8.5 2.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div>
+                <div class="ppe-cb-label">${item.toUpperCase()} missing</div>
+                <div class="ppe-cb-sub">${isPredicted ? 'Pipeline flagged' : 'Not flagged by pipeline'}</div>
+            </div>`;
+        cb.addEventListener('click', ()=>{
+            if (lbChecked.has(item)) lbChecked.delete(item);
+            else lbChecked.add(item);
+            renderCheckboxes(ev);
+        });
+        grid.appendChild(cb);
+    });
+}
+
+function navigateLb(dir){
+    lbIndex = Math.max(0, Math.min(labelFiltered.length-1, lbIndex+dir));
+    renderLbContent();
+}
+
+function submitLabelCheckbox(action){
+    if (!labelFiltered.length) return;
+    const ev = labelFiltered[lbIndex];
+    if (action === 'skip') {
+        setLabelForEvent(ev, [], true);
+        showToast('Skipped','success');
+    } else {
+        const missing = Array.from(lbChecked);
+        setLabelForEvent(ev, missing, false);
+        const lbl = getLabelForEvent(ev);
+        const msgMap = {'all-tp':'✓ All TP','has-fp':'FP detected','has-fn':'FN detected'};
+        showToast(msgMap[lbl.aggregate]||'Labeled','success');
+    }
+    if (lbIndex < labelFiltered.length-1) { lbIndex++; renderLbContent(); }
+    else { closeLabelLb(); showToast(`Done! ${labelFiltered.length} events labeled.`,'success'); }
+}
+
+// ── Data loading ──────────────────────────────────────────────
+async function loadLabelData(){
+    const grid = document.getElementById('label-grid');
+    grid.innerHTML = '<div class="label-empty"><div class="label-empty-title">Loading…</div><div class="label-empty-sub">Pulling from Supabase</div></div>';
+    try {
+        // Flush any queued labels before loading so backend has latest state
+        await flushLabelQueue();
+
+        const [violRes, labelRes] = await Promise.all([
+            fetch('/api/violations/all?limit=500'),
+            fetch('/api/labels?limit=2000'),
+        ]);
+        const violData  = await violRes.json();
+        const labelData = await labelRes.json();
+
+        labelAllRows = violData.data || [];
+        labelMerged  = mergeRows(labelAllRows);
+
+        // Merge backend labels into localStorage (backend wins on conflicts by labeled_at)
+        const stored = loadLabelsFromStorage();
+        (labelData.data || []).forEach(row => {
+            const key = row.merge_key;
+            if (!stored[key] || new Date(row.labeled_at) >= new Date(stored[key]?.labeled_at || 0)) {
+                stored[key] = {
+                    merge_key: key, session_id: row.session_id, tracker_id: row.tracker_id,
+                    predicted_missing: row.predicted_missing || [], human_missing: row.human_missing,
+                    per_item: row.per_item || {}, aggregate: row.aggregate,
+                    skipped: row.skipped, model: row.model, row_ids: row.row_ids || [],
+                    first_created_at: row.first_created_at, labeled_at: row.labeled_at,
+                };
+            }
+        });
+        saveLabelsToStorage(stored);
+
+        applyFilter(); renderLabelGrid(); renderLabelSummary();
+        showToast(`Loaded ${labelAllRows.length} violations → ${labelMerged.length} events`, 'success');
+    } catch(e) {
+        grid.innerHTML = '<div class="label-empty"><div class="label-empty-title">Failed to load</div><div class="label-empty-sub">Check backend connection</div></div>';
+        showToast('Failed to load violations','error');
+    }
+}
+
+// ── Export ────────────────────────────────────────────────────
+function exportLabels(){
+    const labels = loadLabelsFromStorage(), vals = Object.values(labels);
+    if (!vals.length) { showToast('No labels to export','error'); return; }
+    const s = computeLabelStats();
+    const payload = {
+        exported_at: new Date().toISOString(),
+        summary: { total_events: vals.length, item_tp: s.tp, item_fp: s.fp, item_fn: s.fn, skip: s.skip,
+            estimated_precision: s.prec!==null?parseFloat((s.prec*100).toFixed(1)):null,
+            estimated_recall:    s.recall!==null?parseFloat((s.recall*100).toFixed(1)):null },
+        labels: vals,
+    };
+    const blob = new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+    const url  = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href=url; a.download=`ppe_labels_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    showToast(`Exported ${vals.length} events`,'success');
+}
+
+function clearAllLabels(){
+    if (!confirm('Clear all labels from this browser? This cannot be undone.')) return;
+    localStorage.removeItem(LABEL_STORAGE_KEY);
+    renderLabelSummary(); renderLabelGrid();
+    showToast('All labels cleared','success');
+}
+
+// ============================================================
+// Keyboard
+// ============================================================
+document.addEventListener('keydown', e => {
+    if (lbActive) {
+        if (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+        if (e.key==='1'){e.preventDefault();const item=ALL_PPE_ITEMS[0];if(lbChecked.has(item))lbChecked.delete(item);else lbChecked.add(item);renderCheckboxes(labelFiltered[lbIndex]);}
+        else if(e.key==='2'){e.preventDefault();const item=ALL_PPE_ITEMS[1];if(lbChecked.has(item))lbChecked.delete(item);else lbChecked.add(item);renderCheckboxes(labelFiltered[lbIndex]);}
+        else if(e.key==='Enter'){e.preventDefault();submitLabelCheckbox('confirm');}
+        else if(e.key.toLowerCase()==='s'){e.preventDefault();submitLabelCheckbox('skip');}
+        else if(e.key==='ArrowLeft'){e.preventDefault();navigateLb(-1);}
+        else if(e.key==='ArrowRight'){e.preventDefault();navigateLb(1);}
+        else if(e.key==='Escape'){closeLabelLb();}
+        return;
+    }
+    if(e.key==='Escape'){closeLightbox();closeZoneEditor();}
+});
+
+// ============================================================
 // Init
-// ---------------------------------------------------------------------------
-window.addEventListener('DOMContentLoaded',()=>{
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
     fetchThresholds();
     onRouterSliderInput();
     fetchRouterConfig();
     syncCamerasFromBackend();
 });
-
-async function syncCamerasFromBackend(){try{const res=await fetch('/api/cameras');const data=await res.json();(data.cameras||[]).forEach(cam=>{if(!activeCameras[cam.cam_id]){activeCameras[cam.cam_id]={label:cam.label,imgEl:null,hasZone:false};if(!focusedCamId)focusedCamId=cam.cam_id;}});renderGrid();renderCameraList();}catch(e){}}
 </script>
 </body>
 </html>

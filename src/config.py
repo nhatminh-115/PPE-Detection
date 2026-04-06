@@ -5,9 +5,10 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # External services  (loaded from .env)
 # ---------------------------------------------------------------------------
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-MLFLOW_URI   = os.getenv("MLFLOW_TRACKING_URI")
+SUPABASE_URL          = os.getenv("SUPABASE_URL")
+SUPABASE_KEY          = os.getenv("SUPABASE_KEY")           # anon key — read-only dashboard use
+SUPABASE_SERVICE_KEY  = os.getenv("SUPABASE_SERVICE_KEY")   # service_role key — backend writes
+MLFLOW_URI            = os.getenv("MLFLOW_TRACKING_URI")
 
 # ---------------------------------------------------------------------------
 # Model paths / identifiers

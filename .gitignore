@@ -206,13 +206,7 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-.env
-
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-
+# Project-specific artifacts
 *.pt
 *.pth
 *.onnx
@@ -221,13 +215,24 @@ datasets/
 model_cache/
 temp_uploads/
 violation_crops/
+runs/
+
+data/
+eval_report.py
+
+extras/
+huggingfacespace/
 
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-extras/
-runs/
-data/
-eval_report.py
-huggingfacespace/
+
+# Local env variants (keep .env.example if present)
+.env.*
+!.env.example
+
+supabase
+benchmark_sr.py
+.claude/
+.agents/

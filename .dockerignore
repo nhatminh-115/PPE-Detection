@@ -1,44 +1,53 @@
-# 1. Git & CI/CD Meta-data (Not needed in production container)
+# VCS / CI metadata
 .git/
 .github/
 .gitignore
 
-# 2. Documentation & Local Tests
-README.md
-LICENSE
-tests/
-sanity_check.py
-
-# 3. Environment Secrets (Must be injected at runtime, NOT baked into image)
+# Local environment / editors
 .env
-
-# 4. Python Cache
-__pycache__/
-*.pyc
-.pytest_cache/
-
-# 5. Ephemeral Directories & Heavy Data (Must use Docker Volumes instead)
-datasets/
-model_cache/
-temp_uploads/
-violation_crops/
-
-# 6. Extraneous Scripts (Only keep what the API needs)
-*.pt
-*.pth
-*.onnx
-
-datasets/
-model_cache/
-temp_uploads/
-violation_crops/
-
+.env.*
+!.env.example
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Docs and local-only assets
+README.md
+LICENSE
+docs/
+tests/
 extras/
-runs/
-data/
-eval_report.py
 huggingfacespace/
+.agents/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime-generated artifacts (mounted as volumes in docker-compose)
+model_cache/
+temp_uploads/
+violation_crops/
+runs/
+
+# Large training data and scripts
+datasets/
+training/
+
+# Keep only the RAG vector store in build context
+data/*
+!data/chroma_db/
+!data/chroma_db/**
+
+# Local helper scripts not required by API runtime
+eval_report.py
+benchmark_sr.py
+
+# SQL migrations and local project meta not needed by runtime container
+supabase/
+.claude/
+.agents/

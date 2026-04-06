@@ -209,22 +209,44 @@ https://github.com/user-attachments/assets/7d18e0cb-dba9-4d97-8319-41e1005efcc8
     Create a `.env` file:
     ```env
     SUPABASE_URL=https://your-project.supabase.co
+    SUPABASE_SERVICE_KEY=your_service_role_key
     SUPABASE_KEY=your_anon_key
     MLFLOW_TRACKING_URI=https://dagshub.com/nhatminh-115/PPE-Detection.mlflow
     GROQ_API_KEY=your_groq_key
     TELEGRAM_BOT_TOKEN=your_bot_token
     TELEGRAM_CHAT_ID=your_chat_id
+    REPORT_USE_LANGGRAPH=1
+    SECOND_OPINION_THRESHOLD=1.0
+    MUTE_THIRD_PARTY_STARTUP_LOGS=1
+    QUIET_GET_ACCESS_LOGS=1
     ```
 
-2. **Provision Infrastructure:**
+2. **One-time Supabase setup:**
+    * Run SQL migrations in order:
+      * `supabase/migrations/001_ppe_labels.sql`
+      * `supabase/migrations/002_ppe_labels_sha256.sql`
+      * `supabase/migrations/003_daily_reports_phase2.sql`
+      * `supabase/migrations/004_ppe_labels_auto.sql`
+    * Create a public Storage bucket named `ppe-crops`.
+
+3. **(If needed) Build the RAG index:**
+    ```bash
+    python rag/ingest.py
+    ```
+    This creates `data/chroma_db`, used by daily regulation-cited reports.
+
+4. **Provision Infrastructure:**
     ```bash
     docker-compose up --build -d
     ```
 
-3. **Access:**
+5. **Access:**
     * **Dashboard:** `http://localhost:8000/`
     * **Per-Camera Feed:** `http://localhost:8000/video_feed/{cam_id}`
     * **Audit Logs:** `http://localhost:8000/api/violations`
+    * **Labels API:** `http://localhost:8000/api/labels`
+    * **Second Opinion Trigger:** `http://localhost:8000/api/second_opinion/run?date=YYYY-MM-DD`
+    * **Report Generation Trigger:** `http://localhost:8000/api/report/generate?date=YYYY-MM-DD`
     * **Camera Registry:** `http://localhost:8000/api/cameras`
 
 ### Multi-Camera Setup

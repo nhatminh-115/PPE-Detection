@@ -43,6 +43,8 @@ jobs:
             requests==2.32.5 \
             uvicorn==0.35.0 \
             groq \
+            langgraph \
+            langchain-groq \
             numpy pandas Pillow
 
       - name: Execute System Tests

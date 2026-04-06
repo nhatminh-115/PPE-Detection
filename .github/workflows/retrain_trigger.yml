@@ -1,0 +1,109 @@
+name: Retrain Trigger
+
+on:
+  schedule:
+    - cron: "30 16 * * *"   # 23:30 ICT — 30 min after daily report
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force retrain regardless of drift (true/false)"
+        required: false
+        default: "false"
+      date:
+        description: "Date to evaluate drift for (YYYY-MM-DD, ICT). Leave blank for today."
+        required: false
+        default: ""
+
+jobs:
+  check-drift:
+    runs-on: ubuntu-latest
+    outputs:
+      should_retrain: ${{ steps.drift.outputs.should_retrain }}
+      rolling_rate:   ${{ steps.drift.outputs.rolling_rate }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install supabase==2.3.4 python-dotenv==1.0.0
+
+      - name: Check drift signal
+        id: drift
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DRIFT_THRESHOLD:      "0.25"
+          FORCE_RETRAIN:        ${{ github.event.inputs.force || 'false' }}
+          DATE_INPUT:           ${{ github.event.inputs.date || '' }}
+        run: |
+          python - <<'PYEOF'
+          import os, sys
+          sys.path.insert(0, ".")
+          from datetime import datetime, timezone, timedelta
+          from src.flywheel.drift_monitor import run_drift_monitor
+
+          ICT      = timezone(timedelta(hours=7))
+          date_str = os.environ.get("DATE_INPUT") or datetime.now(ICT).strftime("%Y-%m-%d")
+          force    = os.environ.get("FORCE_RETRAIN", "false").lower() == "true"
+
+          result       = run_drift_monitor(date_str)
+          rolling      = result.get("rolling_7d_rate")
+          should       = result.get("retrain_triggered") or force
+          rolling_str  = f"{rolling:.4f}" if rolling is not None else "insufficient_data"
+
+          print(f"[drift] date={date_str} rate={result['disagreement_rate']} rolling={rolling_str} trigger={should}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"should_retrain={str(should).lower()}\n")
+              fh.write(f"rolling_rate={rolling_str}\n")
+          PYEOF
+
+  retrain-effnet:
+    needs: check-drift
+    if: needs.check-drift.outputs.should_retrain == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install retrain dependencies
+        run: |
+          pip install --upgrade pip
+          pip install \
+            supabase==2.3.4 \
+            python-dotenv==1.0.0 \
+            requests==2.32.5 \
+            boto3 \
+            mlflow \
+            timm \
+            torch torchvision \
+            pandas Pillow numpy tqdm torchmetrics
+
+      - name: Run EfficientNet retrain
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY:      ${{ secrets.SUPABASE_SERVICE_KEY }}
+          MLFLOW_TRACKING_URI:       ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME:  ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD:  ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
+          S3_BUCKET:                 ${{ secrets.S3_BUCKET }}
+          S3_PREFIX:                 ${{ vars.S3_PREFIX || 'ppe-flywheel' }}
+          AWS_ACCESS_KEY_ID:         ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY:     ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION:        ${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }}
+          ROLLING_RATE:              ${{ needs.check-drift.outputs.rolling_rate }}
+          MIN_SAMPLES:               "50"
+        run: python training/retrain_effnet.py

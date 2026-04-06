@@ -5,8 +5,8 @@ jinja2
 lap
 matplotlib
 mlflow
-numpy
-opencv-python-headless==4.8.1.78
+numpy<2
+opencv-contrib-python-headless==4.8.1.78
 pandas
 Pillow
 pytest
@@ -33,3 +33,7 @@ onnx
 onnxruntime 
 onnxruntime-extensions
 onnxscript
+realesrgan
+langgraph
+langchain-groq
+boto3

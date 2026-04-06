@@ -6,16 +6,18 @@ import re
 import cv2
 import requests
 from supabase import create_client
-from src.config import SUPABASE_URL, SUPABASE_KEY
+from src.config import SUPABASE_URL, SUPABASE_KEY, SUPABASE_SERVICE_KEY
 
 logger = logging.getLogger(__name__)
 
-supabase_client = None
+supabase_client         = None
+supabase_service_client = None
 db_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 reported_ids = set()
 
+
 def get_supabase_client():
-    """Implements lazy initialization for Supabase to prevent CI/CD import crashes."""
+    """Anon-key client — used for reads and violation logging."""
     global supabase_client
     if supabase_client is None:
         if SUPABASE_URL and SUPABASE_KEY:
@@ -33,6 +35,32 @@ def get_supabase_client():
         else:
             logger.warning("Supabase credentials missing. Remote logging disabled.")
     return supabase_client
+
+
+def get_supabase_service_client():
+    """
+    Service-role client — bypasses RLS for backend writes (labels, audit, storage upload).
+    Falls back to the anon client if SUPABASE_SERVICE_KEY is not set.
+    Set SUPABASE_SERVICE_KEY in .env to enable full write access.
+    """
+    global supabase_service_client
+    if supabase_service_client is None:
+        key = SUPABASE_SERVICE_KEY or SUPABASE_KEY
+        if SUPABASE_URL and key:
+            try:
+                supabase_service_client = create_client(SUPABASE_URL, key)
+                if SUPABASE_SERVICE_KEY:
+                    logger.info("Supabase service-role client initialized.")
+                else:
+                    logger.warning(
+                        "SUPABASE_SERVICE_KEY not set — label writes will use the anon key "
+                        "and may be blocked by RLS. Add SUPABASE_SERVICE_KEY to .env."
+                    )
+            except Exception as e:
+                logger.error(f"Failed to initialize Supabase service client: {e}")
+        else:
+            logger.warning("Supabase credentials missing. Label writes disabled.")
+    return supabase_service_client
 
 
 def send_telegram_alert(tracker_id: int, missing_items: list, crop_img) -> None:
