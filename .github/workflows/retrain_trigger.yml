@@ -107,6 +107,9 @@ jobs:
               -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')" \
             http://169.254.169.254/latest/meta-data/instance-id)
 
+          # Always self-terminate on exit, whether training succeeded or failed
+          trap 'aws ec2 terminate-instances --instance-ids "$INSTANCE_ID" --region "__AWS_REGION__"' EXIT
+
           # Install and start Docker
           dnf install -y docker
           systemctl start docker
@@ -126,9 +129,6 @@ jobs:
             -e MIN_SAMPLES="__MIN_SAMPLES__" \
             __DOCKERHUB_USERNAME__/ppe_system:latest \
             python training/retrain_effnet.py
-
-          # Self-terminate when done
-          aws ec2 terminate-instances --instance-ids "$INSTANCE_ID" --region "__AWS_REGION__"
           SCRIPT
 
           # Substitute placeholders with actual secret values
