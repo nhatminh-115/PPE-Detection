@@ -13,6 +13,10 @@ on:
         description: "Date to evaluate drift for (YYYY-MM-DD, ICT). Leave blank for today."
         required: false
         default: ""
+      min_samples:
+        description: "Override MIN_SAMPLES threshold (default 50). Set to 1 for testing."
+        required: false
+        default: "50"
 
 jobs:
   check-drift:
@@ -90,6 +94,7 @@ jobs:
           DOCKERHUB_USERNAME:       ${{ secrets.DOCKERHUB_USERNAME }}
           ROLLING_RATE:             ${{ needs.check-drift.outputs.rolling_rate }}
           AWS_REGION:               ${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }}
+          MIN_SAMPLES:              ${{ github.event.inputs.min_samples || '50' }}
         run: |
           cat > user_data.sh << 'SCRIPT'
           #!/bin/bash
@@ -118,7 +123,7 @@ jobs:
             -e S3_PREFIX="__S3_PREFIX__" \
             -e AWS_DEFAULT_REGION="__AWS_REGION__" \
             -e ROLLING_RATE="__ROLLING_RATE__" \
-            -e MIN_SAMPLES="50" \
+            -e MIN_SAMPLES="__MIN_SAMPLES__" \
             __DOCKERHUB_USERNAME__/ppe_system:latest \
             python training/retrain_effnet.py
 
@@ -137,6 +142,7 @@ jobs:
             -e "s|__S3_PREFIX__|${S3_PREFIX}|g" \
             -e "s|__AWS_REGION__|${AWS_REGION}|g" \
             -e "s|__ROLLING_RATE__|${ROLLING_RATE}|g" \
+            -e "s|__MIN_SAMPLES__|${MIN_SAMPLES}|g" \
             -e "s|__DOCKERHUB_USERNAME__|${DOCKERHUB_USERNAME}|g" \
             user_data.sh
 

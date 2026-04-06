@@ -101,20 +101,22 @@ The system implements a closed-loop retraining pipeline that continuously improv
 
 ```
 Violations (Supabase)
-    └── Human Labeling (Label Studio UI)
-            └── Second Opinion Agent (Groq Scout)
+    └── Second Opinion Agent (Groq Scout)
+            └── Human Labeling (Label Studio UI)
                     └── S3 Export (versioned crops + manifests)
                             └── Drift Monitor (7-day rolling disagreement rate)
                                     └── EC2 Spot Retrain (EfficientNet fine-tune → MLflow)
 ```
 
-### 2.1 Human-in-the-Loop Labeling
+### 2.1 Vision Second Opinion Agent
+
+A Groq vision agent (Llama 4 Scout) runs nightly on all violation events. It auto-labels events as `has-fp`, `has-fn`, or `all-correct` — writing to `ppe_labels` with `is_auto_labeled=True`. Disagreements surface as pre-labeled cards in Label Studio for human review and become the highest-value retraining candidates.
+
+
+### 2.2 Human-in-the-Loop Labeling
 
 The Label Studio tab in the dashboard surfaces merged violation events (keyed by `session_id:tracker_id`) as label cards. Annotators confirm or reject model predictions; verdicts are derived server-side as TP/FP/FN/TN per PPE item. Crops are upscaled with Real-ESRGAN x4 (74ms/crop, +38% sharpness recovery) before storage.
 
-### 2.2 Vision Second Opinion Agent
-
-A Groq vision agent (Llama 4 Scout) runs nightly on all violation events. It auto-labels events as `has-fp`, `has-fn`, or `all-correct` — writing to `ppe_labels` with `is_auto_labeled=True`. Disagreements surface as pre-labeled cards in Label Studio for human review and become the highest-value retraining candidates.
 
 ### 2.3 S3 Dataset Versioning
 

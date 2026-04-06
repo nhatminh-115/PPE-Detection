@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - 'terraform/**'
+  workflow_dispatch:
 
 jobs:
   validate:
