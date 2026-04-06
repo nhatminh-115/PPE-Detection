@@ -15,7 +15,7 @@ The system is designed as a closed-loop flywheel: every violation detected feeds
 
 ## 1. System Architecture Overview
 
-![PPE Vision Architecture](docs/PPE_Pipeline_4.png)
+![PPE Vision Architecture](docs/PPE_Pipeline_5.png)
 
 | Component | Technology | Role |
 |---|---|---|
