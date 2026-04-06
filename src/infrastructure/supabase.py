@@ -3,7 +3,6 @@ import time
 import logging
 import concurrent.futures
 import re
-import requests
 from supabase import create_client
 from src.config import SUPABASE_URL, SUPABASE_KEY, SUPABASE_SERVICE_KEY
 
@@ -80,12 +79,13 @@ def send_telegram_alert(tracker_id: int, missing_items: list, crop_img) -> None:
     )
 
     try:
+        import requests as _requests
         if crop_img is not None and crop_img.size > 0:
             # Send image with caption
             import cv2
             ret, buffer = cv2.imencode(".jpg", crop_img)
             if ret:
-                requests.post(
+                _requests.post(
                     f"https://api.telegram.org/bot{token}/sendPhoto",
                     data={"chat_id": chat_id, "caption": caption},
                     files={"photo": ("violation.jpg", buffer.tobytes(), "image/jpeg")},
@@ -94,7 +94,7 @@ def send_telegram_alert(tracker_id: int, missing_items: list, crop_img) -> None:
                 return
 
         # Fallback: text only if no image
-        requests.post(
+        _requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
             json={"chat_id": chat_id, "text": caption},
             timeout=10,
