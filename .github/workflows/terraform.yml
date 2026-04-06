@@ -1,4 +1,4 @@
-name: Terraform Validate
+name: Terraform
 
 on:
   pull_request:
@@ -10,6 +10,11 @@ on:
     paths:
       - 'terraform/**'
   workflow_dispatch:
+    inputs:
+      action:
+        description: "apply or destroy"
+        required: false
+        default: "apply"
 
 jobs:
   validate:
@@ -32,3 +37,63 @@ jobs:
 
       - name: Terraform Validate
         run: terraform validate
+
+  apply:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write       # required to set repo variables via gh cli
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.10"
+          terraform_wrapper: false   # disable wrapper so outputs are plain text
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }}
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=ppe-flywheel" \
+            -backend-config="region=${{ vars.AWS_DEFAULT_REGION || 'us-east-1' }}"
+
+      - name: Terraform Apply / Destroy
+        run: |
+          if [ "${{ github.event.inputs.action }}" = "destroy" ]; then
+            terraform destroy -auto-approve
+          else
+            terraform apply -auto-approve
+          fi
+
+      - name: Set GitHub Variables from Terraform outputs
+        if: github.event.inputs.action != 'destroy'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LT_ID=$(terraform output -raw retrain_launch_template_id)
+          SUBNET_ID=$(terraform output -raw retrain_subnet_id)
+
+          gh variable set RETRAIN_LAUNCH_TEMPLATE_ID \
+            --body "$LT_ID" \
+            --repo ${{ github.repository }}
+
+          gh variable set RETRAIN_SUBNET_ID \
+            --body "$SUBNET_ID" \
+            --repo ${{ github.repository }}
+
+          echo "RETRAIN_LAUNCH_TEMPLATE_ID=$LT_ID"
+          echo "RETRAIN_SUBNET_ID=$SUBNET_ID"
