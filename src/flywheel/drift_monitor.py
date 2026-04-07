@@ -1,14 +1,14 @@
 """
 Phase 4 — Scout Disagreement Rate Monitor
 
-Computes the daily Scout disagreement rate from ppe_labels auto-labeled rows
-and writes it to the drift_log table.  Returns the 7-day rolling average.
+Computes daily disagreement signals and writes them to the drift_log table.
 
-Drift metric:
-  disagreement_rate = (has-fp + has-fn auto-labels) / total auto-labels for the day
+Signals:
+    - Scout disagreement rate: model vs Scout on auto-labeled events (early warning)
+    - Human disagreement rate: model vs human-confirmed labels (retrain trigger source)
 
 Retrain trigger:
-  7-day rolling average of disagreement_rate > DRIFT_THRESHOLD (default 0.25)
+    7-day rolling average of human_disagreement_rate > DRIFT_THRESHOLD (default 0.25)
   Minimum 3 days of data required before a trigger fires.
 """
 
@@ -29,7 +29,7 @@ ICT = timezone(timedelta(hours=7))
 
 def compute_daily_rate(date_str: str) -> dict:
     """
-    Count Scout auto-labels for date_str and compute the raw disagreement_rate.
+    Compute daily Scout and Human disagreement rates for date_str.
     """
     from src.infrastructure.supabase import get_supabase_service_client
 
@@ -40,35 +40,102 @@ def compute_daily_rate(date_str: str) -> dict:
     day_start = f"{date_str}T00:00:00+07:00"
     day_end   = f"{date_str}T23:59:59+07:00"
 
-    rows = (
+    scout_by_key: dict[str, dict] = {}
+
+    # Prefer immutable audit trail so Scout signal is preserved even after human overwrite.
+    try:
+        audit_rows = (
+            client.table("ppe_label_audit")
+            .select("merge_key, created_at, new_state")
+            .gte("created_at", day_start)
+            .lt("created_at", day_end)
+            .order("created_at")
+            .execute()
+            .data or []
+        )
+
+        for row in audit_rows:
+            state = row.get("new_state") or {}
+            if not isinstance(state, dict):
+                continue
+            if not bool(state.get("is_auto_labeled", False)):
+                continue
+            key = str(row.get("merge_key") or state.get("merge_key") or "")
+            if not key:
+                continue
+            scout_by_key[key] = {
+                "aggregate": state.get("aggregate"),
+                "labeled_at": state.get("labeled_at"),
+            }
+    except Exception as exc:
+        logger.warning("drift_monitor: audit read failed, fallback to ppe_labels: %s", exc)
+
+    # Fallback for older data where scout writes were not audited.
+    if not scout_by_key:
+        rows = (
+            client.table("ppe_labels")
+            .select("merge_key, aggregate")
+            .eq("is_auto_labeled", True)
+            .gte("labeled_at", day_start)
+            .lt("labeled_at", day_end)
+            .execute()
+            .data or []
+        )
+        for row in rows:
+            key = str(row.get("merge_key") or "")
+            if not key:
+                continue
+            scout_by_key[key] = {"aggregate": row.get("aggregate")}
+
+    scout_total_auto = len(scout_by_key)
+    scout_disagreements = sum(
+        1 for r in scout_by_key.values() if r.get("aggregate") in ("has-fp", "has-fn")
+    )
+    scout_rate = round(scout_disagreements / scout_total_auto, 4) if scout_total_auto > 0 else 0.0
+
+    # Human-confirmed signal (ground truth path used for retrain trigger)
+    human_rows = (
         client.table("ppe_labels")
-        .select("aggregate")
-        .eq("is_auto_labeled", True)
+        .select("merge_key, aggregate")
+        .eq("is_auto_labeled", False)
+        .eq("skipped", False)
         .gte("labeled_at", day_start)
         .lt("labeled_at", day_end)
         .execute()
         .data or []
     )
+    human_by_key: dict[str, str] = {}
+    for row in human_rows:
+        key = str(row.get("merge_key") or "")
+        if not key:
+            continue
+        human_by_key[key] = str(row.get("aggregate") or "")
 
-    total_auto    = len(rows)
-    disagreements = sum(
-        1 for r in rows if r.get("aggregate") in ("has-fp", "has-fn")
-    )
-    rate = round(disagreements / total_auto, 4) if total_auto > 0 else 0.0
+    human_total_confirmed = len(human_by_key)
+    human_disagreements = sum(1 for v in human_by_key.values() if v in ("has-fp", "has-fn"))
+    human_rate = round(human_disagreements / human_total_confirmed, 4) if human_total_confirmed > 0 else 0.0
 
     return {
-        "date":              date_str,
-        "total_auto":        total_auto,
-        "disagreements":     disagreements,
-        "disagreement_rate": rate,
+        "date":                      date_str,
+        "scout_total_auto":          scout_total_auto,
+        "scout_disagreements":       scout_disagreements,
+        "scout_disagreement_rate":   scout_rate,
+        "human_total_confirmed":     human_total_confirmed,
+        "human_disagreements":       human_disagreements,
+        "human_disagreement_rate":   human_rate,
+        # Canonical disagreement signal for retrain = human-confirmed.
+        "disagreement_rate":         human_rate,
+        # Backward-compatible keys kept for callers that still expect these names.
+        "total_auto":                scout_total_auto,
+        "disagreements":             scout_disagreements,
     }
 
 
-def _rolling_rate_from_log(date_str: str) -> float | None:
+def _rolling_rates_from_log(date_str: str) -> tuple[float | None, float | None]:
     """
-    Read the last ROLLING_WINDOW drift_log rows up to date_str and return
-    their average disagreement_rate.  Returns None when fewer than MIN_DATA_DAYS
-    records exist (avoids early false triggers).
+    Return (human_rolling, scout_rolling) for the last ROLLING_WINDOW rows.
+    Human rolling falls back to legacy disagreement_rate when human_disagreement_rate
+    is unavailable in older rows.
     """
     from src.infrastructure.supabase import get_supabase_service_client
 
@@ -81,21 +148,49 @@ def _rolling_rate_from_log(date_str: str) -> float | None:
         - timedelta(days=ROLLING_WINDOW - 1)
     ).isoformat()
 
-    rows = (
-        client.table("drift_log")
-        .select("date, disagreement_rate")
-        .gte("date", window_start)
-        .lte("date", date_str)
-        .order("date")
-        .execute()
-        .data or []
-    )
+    try:
+        rows = (
+            client.table("drift_log")
+            .select("date, disagreement_rate, human_disagreement_rate, scout_disagreement_rate")
+            .gte("date", window_start)
+            .lte("date", date_str)
+            .order("date")
+            .execute()
+            .data or []
+        )
+    except Exception:
+        # Backward compatibility before migration 007 is applied.
+        rows = (
+            client.table("drift_log")
+            .select("date, disagreement_rate")
+            .gte("date", window_start)
+            .lte("date", date_str)
+            .order("date")
+            .execute()
+            .data or []
+        )
 
-    rates = [r["disagreement_rate"] for r in rows if r.get("disagreement_rate") is not None]
-    if len(rates) < MIN_DATA_DAYS:
-        return None
+    human_rates = []
+    scout_rates = []
+    for r in rows:
+        hr = r.get("human_disagreement_rate")
+        if hr is None:
+            hr = r.get("disagreement_rate")
+        if hr is not None:
+            human_rates.append(hr)
 
-    return round(sum(rates) / len(rates), 4)
+        sr = r.get("scout_disagreement_rate")
+        if sr is not None:
+            scout_rates.append(sr)
+
+    human_rolling = None
+    scout_rolling = None
+    if len(human_rates) >= MIN_DATA_DAYS:
+        human_rolling = round(sum(human_rates) / len(human_rates), 4)
+    if len(scout_rates) >= MIN_DATA_DAYS:
+        scout_rolling = round(sum(scout_rates) / len(scout_rates), 4)
+
+    return human_rolling, scout_rolling
 
 
 def _count_confirmed_labels() -> int:
@@ -132,43 +227,65 @@ def run_drift_monitor(date_str: str | None = None) -> dict:
     if date_str is None:
         date_str = datetime.now(ICT).strftime("%Y-%m-%d")
 
-    daily             = compute_daily_rate(date_str)
-    rolling           = _rolling_rate_from_log(date_str)
-    confirmed_total   = _count_confirmed_labels()
+    daily                   = compute_daily_rate(date_str)
+    rolling_human, rolling_scout = _rolling_rates_from_log(date_str)
+    confirmed_total         = _count_confirmed_labels()
 
-    rate_ok    = rolling is not None and rolling > DRIFT_THRESHOLD
+    rate_ok    = rolling_human is not None and rolling_human > DRIFT_THRESHOLD
     samples_ok = confirmed_total >= MIN_CONFIRMED_SAMPLES
     retrain_triggered = rate_ok and samples_ok
 
     if rate_ok and not samples_ok:
         logger.info(
             "drift_monitor: rate threshold met (%.4f) but only %d/%d confirmed samples — retrain deferred",
-            rolling, confirmed_total, MIN_CONFIRMED_SAMPLES,
+            rolling_human, confirmed_total, MIN_CONFIRMED_SAMPLES,
         )
 
     client = get_supabase_service_client()
     if client:
         try:
-            client.table("drift_log").upsert(
-                {
-                    "date":              date_str,
-                    "total_auto":        daily["total_auto"],
-                    "disagreements":     daily["disagreements"],
-                    "disagreement_rate": daily["disagreement_rate"],
-                    "rolling_7d_rate":   rolling,
-                    "retrain_triggered": retrain_triggered,
-                    "computed_at":       datetime.now(timezone.utc).isoformat(),
-                },
-                on_conflict="date",
-            ).execute()
+            payload = {
+                "date":                    date_str,
+                "total_auto":              daily["total_auto"],
+                "disagreements":           daily["disagreements"],
+                # Canonical disagreement for trigger/reporting = human rate.
+                "disagreement_rate":       daily["human_disagreement_rate"],
+                "rolling_7d_rate":         rolling_human,
+                "scout_total_auto":        daily["scout_total_auto"],
+                "scout_disagreements":     daily["scout_disagreements"],
+                "scout_disagreement_rate": daily["scout_disagreement_rate"],
+                "human_total_confirmed":   daily["human_total_confirmed"],
+                "human_disagreements":     daily["human_disagreements"],
+                "human_disagreement_rate": daily["human_disagreement_rate"],
+                "rolling_7d_rate_scout":   rolling_scout,
+                "retrain_triggered":       retrain_triggered,
+                "computed_at":             datetime.now(timezone.utc).isoformat(),
+            }
+            try:
+                client.table("drift_log").upsert(payload, on_conflict="date").execute()
+            except Exception:
+                # Backward compatibility when extra columns are not migrated yet.
+                client.table("drift_log").upsert(
+                    {
+                        "date":              date_str,
+                        "total_auto":        daily["human_total_confirmed"],
+                        "disagreements":     daily["human_disagreements"],
+                        "disagreement_rate": daily["human_disagreement_rate"],
+                        "rolling_7d_rate":   rolling_human,
+                        "retrain_triggered": retrain_triggered,
+                        "computed_at":       datetime.now(timezone.utc).isoformat(),
+                    },
+                    on_conflict="date",
+                ).execute()
         except Exception as exc:
             logger.warning("drift_monitor: drift_log upsert failed: %s", exc)
 
     result = {
         **daily,
-        "rolling_7d_rate":   rolling,
-        "drift_threshold":   DRIFT_THRESHOLD,
-        "retrain_triggered": retrain_triggered,
+        "rolling_7d_rate":        rolling_human,
+        "rolling_7d_rate_scout":  rolling_scout,
+        "drift_threshold":        DRIFT_THRESHOLD,
+        "retrain_triggered":      retrain_triggered,
     }
     logger.info("drift_monitor: %s", result)
     return result

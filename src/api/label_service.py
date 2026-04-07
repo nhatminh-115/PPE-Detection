@@ -415,6 +415,7 @@ def upsert_label(payload: dict, labeled_by: str = "anonymous") -> dict:
         "threshold_snapshot": payload.get("threshold_snapshot") or {},
         "is_auto_labeled":    bool(payload.get("is_auto_labeled", False)),
         "auto_label_model":   payload.get("auto_label_model"),
+        "expire_at":          (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(),
     }
 
     # Crop upload — skip if already uploaded for this merge_key
@@ -597,4 +598,167 @@ def _empty_quality(date_str: str | None) -> dict:
         "item_tp": 0, "item_fp": 0, "item_fn": 0, "item_tn": 0,
         "precision": None, "recall": None,
         "label_coverage_note": "no_data",
+    }
+
+
+# ── Crop retention cleanup ─────────────────────────────────────────────────────
+
+def cleanup_expired_crops() -> dict:
+    """
+    Purge expired crop files from Supabase Storage and null out stale crop refs in ppe_labels.
+
+    Retention policy (set at label creation):
+      - Scout auto-labels (is_auto_labeled=True):  expire_at = labeled_at + 2 days
+      - Human labels     (is_auto_labeled=False):  expire_at = labeled_at + 3 days
+
+    Safety guarantees:
+      - A storage object is only deleted when no non-expired label shares the same crop_sha256.
+      - DB crop refs are only nulled after the storage object is successfully removed (or when
+        the object is shared and we skip deletion — to keep the expired row clean).
+      - If storage removal fails, DB refs are left intact so the next run can retry.
+
+    Returns a summary dict with keys: removed, nulled, skipped_shared, total_expired.
+    """
+    client = get_supabase_service_client()
+    if not client:
+        return {"removed": 0, "nulled": 0, "skipped_shared": 0, "total_expired": 0, "error": "Supabase unavailable"}
+
+    now_dt = datetime.now(timezone.utc)
+    now_iso = now_dt.isoformat()
+
+    def _is_active_ref(expire_at_raw: str | None) -> bool:
+        # Treat null/invalid expire_at as active to avoid accidental deletion.
+        if not expire_at_raw:
+            return True
+        try:
+            expire_dt = datetime.fromisoformat(str(expire_at_raw).replace("Z", "+00:00"))
+            return expire_dt > now_dt
+        except Exception:
+            return True
+
+    try:
+        rows = (
+            client.table("ppe_labels")
+            .select("id, merge_key, crop_url, crop_sha256")
+            .lt("expire_at", now_iso)
+            .not_.is_("crop_url", "null")
+            .execute()
+            .data or []
+        )
+    except Exception as exc:
+        logger.warning("cleanup_expired_crops: query failed: %s", exc)
+        return {"removed": 0, "nulled": 0, "skipped_shared": 0, "total_expired": 0, "error": str(exc)}
+
+    removed = nulled = skipped_shared = 0
+
+    for row in rows:
+        crop_url    = row.get("crop_url") or ""
+        crop_sha256 = row.get("crop_sha256")
+        row_id      = row["id"]
+        merge_key   = row.get("merge_key", "?")
+
+        has_storage_path = CROPS_BUCKET in crop_url
+        storage_deleted  = False
+        shared_object    = False
+
+        if has_storage_path:
+            path_part = crop_url.split(f"/{CROPS_BUCKET}/", 1)[-1].split("?")[0]
+
+            # Safety check: skip deletion if any non-expired label still references
+            # the same hash (deduped objects are shared across rows).
+            if crop_sha256:
+                try:
+                    refs = (
+                        client.table("ppe_labels")
+                        .select("id, expire_at")
+                        .eq("crop_sha256", crop_sha256)
+                        .neq("id", row_id)
+                        .not_.is_("crop_url", "null")
+                        .execute()
+                    )
+                    if any(_is_active_ref(r.get("expire_at")) for r in (refs.data or [])):
+                        shared_object = True
+                except Exception as exc:
+                    # On query failure, treat conservatively: assume active ref exists.
+                    logger.debug(
+                        "cleanup_expired_crops: active-ref check failed for %s: %s",
+                        merge_key, exc,
+                    )
+                    shared_object = True
+
+            # Fallback safety check by exact crop_url path when sha is missing or migrated data is inconsistent.
+            if not shared_object:
+                try:
+                    refs_by_url = (
+                        client.table("ppe_labels")
+                        .select("id, expire_at, crop_url")
+                        .eq("crop_url", crop_url)
+                        .neq("id", row_id)
+                        .execute()
+                    )
+                    if any(_is_active_ref(r.get("expire_at")) for r in (refs_by_url.data or [])):
+                        shared_object = True
+                except Exception as exc:
+                    logger.debug(
+                        "cleanup_expired_crops: active-ref(url) check failed for %s: %s",
+                        merge_key, exc,
+                    )
+                    shared_object = True
+
+            if shared_object:
+                # Object still needed by another label — skip storage delete.
+                # Still null this expired row's pointer so it stops appearing in cleanup queries.
+                skipped_shared += 1
+                try:
+                    client.table("ppe_labels").update({
+                        "crop_url":         None,
+                        "crop_sha256":      None,
+                        "crop_uploaded_at": None,
+                    }).eq("id", row_id).execute()
+                    nulled += 1
+                except Exception as exc:
+                    logger.debug(
+                        "cleanup_expired_crops: null crop ref (shared) failed for %s: %s",
+                        merge_key, exc,
+                    )
+                continue
+
+            # No active reference — safe to remove from Storage.
+            try:
+                client.storage.from_(CROPS_BUCKET).remove([path_part])
+                removed += 1
+                storage_deleted = True
+            except Exception as exc:
+                logger.debug(
+                    "cleanup_expired_crops: storage remove failed for %s: %s",
+                    merge_key, exc,
+                )
+
+        # Null DB crop refs only when:
+        #   (a) storage was successfully removed, or
+        #   (b) this row had no storage path to begin with (crop_url points elsewhere).
+        if storage_deleted or not has_storage_path:
+            try:
+                client.table("ppe_labels").update({
+                    "crop_url":         None,
+                    "crop_sha256":      None,
+                    "crop_uploaded_at": None,
+                }).eq("id", row_id).execute()
+                nulled += 1
+            except Exception as exc:
+                logger.debug(
+                    "cleanup_expired_crops: null crop ref failed for %s: %s",
+                    merge_key, exc,
+                )
+
+    logger.info(
+        "cleanup_expired_crops: removed=%d objects, nulled=%d rows, "
+        "skipped_shared=%d, total_expired=%d",
+        removed, nulled, skipped_shared, len(rows),
+    )
+    return {
+        "removed":        removed,
+        "nulled":         nulled,
+        "skipped_shared": skipped_shared,
+        "total_expired":  len(rows),
     }

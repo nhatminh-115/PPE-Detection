@@ -112,12 +112,27 @@ def log_violation_to_supabase(tracker_id, missing_items, missing_probs, crop_img
 
         if crop_img is not None and crop_img.size > 0:
             import cv2
+            import os
+            os.makedirs("violation_crops", exist_ok=True)
             cv2.imwrite(img_filename, crop_img)
+
+        # Upload crop to Supabase Storage so second_opinion can resolve the image
+        # without depending on a shared local disk path.
+        crop_url: str | None = None
+        if crop_img is not None and crop_img.size > 0:
+            try:
+                from src.api.label_service import upload_crop_to_storage
+                merge_key = f"violations/ID{tracker_id}_{timestamp_now}"
+                url, _sha256, _fallback = upload_crop_to_storage(img_filename, merge_key)
+                crop_url = url
+            except Exception as _upload_exc:
+                logger.debug("violation crop cloud upload skipped: %s", _upload_exc)
 
         violations_list = [
             {
                 "tracker_id": int(tracker_id),
                 "image_path": img_filename,
+                "crop_url":   crop_url,   # None when upload failed; second_opinion falls back to image_path
                 "violation_type": f"none_{item}",
                 "confidence": float(prob),
                 "reported_by_model": str(reporter_model or "unknown").lower(),

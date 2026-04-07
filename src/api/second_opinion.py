@@ -55,6 +55,18 @@ def _encode_image(path: str) -> str | None:
         return None
 
 
+def _encode_image_from_url(url: str) -> str | None:
+    """Download image from a public URL and return base64-encoded bytes, or None on failure."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "ppe-second-opinion/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return base64.b64encode(resp.read()).decode("utf-8")
+    except Exception as exc:
+        logger.debug("second_opinion: image URL fetch failed (%s): %s", url, exc)
+        return None
+
+
 def _avg_conf(violations: list[dict]) -> float | None:
     confs = [v.get("confidence") for v in violations if v.get("confidence") is not None]
     return sum(confs) / len(confs) if confs else None
@@ -103,15 +115,17 @@ def find_uncertain_events(date_str: str) -> list[dict]:
 
         if key not in merged:
             merged[key] = {
-                "merge_key":       key,
-                "session_id":      sid,
-                "tracker_id":      tid,
-                "row_ids":         [],
+                "merge_key":        key,
+                "session_id":       sid,
+                "tracker_id":       tid,
+                "row_ids":          [],
                 "predicted_missing": [],
-                "conf_sum":        0.0,
-                "conf_n":          0,
-                "image_path":      None,
-                "model":           row.get("reported_by_model") or "unknown",
+                "conf_sum":         0.0,
+                "conf_n":           0,
+                "image_path":       None,
+                "crop_url":         None,   # populated from ppe_labels if available
+                "crop_sha256":      None,
+                "model":            row.get("reported_by_model") or "unknown",
                 "first_created_at": row.get("created_at"),
             }
 
@@ -133,8 +147,34 @@ def find_uncertain_events(date_str: str) -> list[dict]:
             if vp:
                 ev["image_path"] = vp
 
+        # Also pick up cloud crop_url persisted at violation-write time (new events).
+        # This is the canonical path; ppe_labels prefetch below will override if a label exists.
+        if not ev["crop_url"]:
+            vc = viols[0].get("crop_url") if viols else None
+            if vc:
+                ev["crop_url"] = vc
+
         if row.get("created_at", "") < ev["first_created_at"]:
             ev["first_created_at"] = row["created_at"]
+
+    # Prefetch existing crop_url from ppe_labels — avoids re-uploading crops that are
+    # already in Supabase Storage from a prior human or scout label.
+    all_keys = list(merged.keys())
+    if client and all_keys:
+        try:
+            res = (
+                client.table("ppe_labels")
+                .select("merge_key, crop_url, crop_sha256")
+                .in_("merge_key", all_keys)
+                .execute()
+            )
+            for r in (res.data or []):
+                mk = r.get("merge_key")
+                if mk in merged and r.get("crop_url"):
+                    merged[mk]["crop_url"]    = r["crop_url"]
+                    merged[mk]["crop_sha256"] = r.get("crop_sha256")
+        except Exception as exc:
+            logger.debug("second_opinion: crop_url prefetch failed: %s", exc)
 
     # Filter to uncertain events only
     uncertain = []
@@ -167,16 +207,22 @@ def _build_vision_prompt(predicted_missing: list[str]) -> str:
     )
 
 
-def call_scout(image_path: str, predicted_missing: list[str]) -> dict | None:
+def call_scout(
+    image_source: str,
+    predicted_missing: list[str],
+    *,
+    is_url: bool = False,
+) -> dict | None:
     """
     Send crop to Llama 4 Scout via Groq vision API.
+    image_source: public URL when is_url=True, local file path otherwise.
     Returns dict like {"hardhat": True, "vest": False} where True = missing.
     Returns None if call fails or image unavailable.
     """
     import json
     from groq import Groq
 
-    b64 = _encode_image(image_path)
+    b64 = _encode_image_from_url(image_source) if is_url else _encode_image(image_source)
     if not b64:
         return None
 
@@ -244,12 +290,19 @@ def store_auto_label(ev: dict, scout_result: dict) -> bool:
     if not client:
         return False
 
+    existing = None
+    try:
+        res = client.table("ppe_labels").select("*").eq("merge_key", ev["merge_key"]).limit(1).execute()
+        existing = res.data[0] if res.data else None
+    except Exception:
+        existing = None
+
     human_missing = [item for item, missing in scout_result.items() if missing]
     predicted_missing = ev.get("predicted_missing") or []
 
     per_item, aggregate = derive_verdicts(
-        predicted_missing=["none_" + i for i in predicted_missing],
-        human_missing=["none_" + i for i in human_missing],
+        predicted_missing=predicted_missing,
+        human_missing=human_missing,
     )
 
     has_disagreement = any(v in ("fp", "fn") for v in per_item.values())
@@ -283,11 +336,20 @@ def store_auto_label(ev: dict, scout_result: dict) -> bool:
             "avg_conf":            ev.get("avg_conf"),
             "uncertain_threshold": UNCERTAIN_THRESHOLD,
         },
+        "expire_at": (datetime.now(timezone.utc) + timedelta(days=2)).isoformat(),
     }
 
-    # Upload normalized crop — same deduplication path as human labels
+    # Prefer existing crop_url (already in Supabase Storage) over re-uploading from local disk.
+    # Fall back to local path for old rows that predate cloud-first storage.
+    crop_url_existing  = ev.get("crop_url")
+    crop_sha256_existing = ev.get("crop_sha256")
     image_path = ev.get("image_path")
-    if image_path:
+
+    if crop_url_existing:
+        row["crop_url"] = crop_url_existing
+        if crop_sha256_existing:
+            row["crop_sha256"] = crop_sha256_existing
+    elif image_path:
         url, sha256, fallback_used = upload_crop_to_storage(image_path, ev["merge_key"])
         if url:
             row["crop_url"]         = url
@@ -296,7 +358,21 @@ def store_auto_label(ev: dict, scout_result: dict) -> bool:
             row["fallback_used"]    = fallback_used
 
     try:
-        client.table("ppe_labels").upsert(row, on_conflict="merge_key").execute()
+        upserted = client.table("ppe_labels").upsert(row, on_conflict="merge_key").execute()
+        saved_row = upserted.data[0] if upserted.data else row
+
+        try:
+            client.table("ppe_label_audit").insert({
+                "label_id":       saved_row.get("id"),
+                "merge_key":      ev["merge_key"],
+                "action":         "update" if existing else "create",
+                "previous_state": existing,
+                "new_state":      saved_row,
+                "labeled_by":     "llama4-scout",
+            }).execute()
+        except Exception as audit_exc:
+            logger.debug("second_opinion: audit insert failed for %s: %s", ev["merge_key"], audit_exc)
+
         logger.debug(
             "second_opinion: stored auto-label for %s (disagreement=%s)",
             ev["merge_key"], has_disagreement,
@@ -312,7 +388,9 @@ def store_auto_label(ev: dict, scout_result: dict) -> bool:
 async def run_second_opinion_batch(date_str: str | None = None) -> dict:
     """
     Run the full second opinion batch for a given ICT date.
-    Skips events already labeled by a human (is_auto_labeled=False rows take precedence).
+        Skips events that already have labels:
+            - human labels (is_auto_labeled=False)
+            - existing auto labels (is_auto_labeled=True)
 
     Returns a summary dict.
     """
@@ -324,39 +402,68 @@ async def run_second_opinion_batch(date_str: str | None = None) -> dict:
 
     uncertain = find_uncertain_events(date_str)
     if not uncertain:
-        return {"date": date_str, "uncertain": 0, "processed": 0, "stored": 0, "skipped_human": 0, "errors": 0}
+        return {
+            "date": date_str,
+            "uncertain": 0,
+            "processed": 0,
+            "stored": 0,
+            "skipped_human": 0,
+            "skipped_auto": 0,
+            "skipped_labeled": 0,
+            "errors": 0,
+        }
 
-    # Skip events already labeled by a human
+    # Skip events already labeled by human or already auto-labeled.
     client = get_supabase_service_client()
     human_labeled: set[str] = set()
+    auto_labeled: set[str] = set()
     if client:
         try:
             keys = [ev["merge_key"] for ev in uncertain]
             res = (
                 client.table("ppe_labels")
-                .select("merge_key")
+                .select("merge_key, is_auto_labeled")
                 .in_("merge_key", keys)
-                .eq("is_auto_labeled", False)
                 .execute()
             )
-            human_labeled = {r["merge_key"] for r in (res.data or [])}
+            for r in (res.data or []):
+                mk = str(r.get("merge_key") or "")
+                if not mk:
+                    continue
+                if bool(r.get("is_auto_labeled", False)):
+                    auto_labeled.add(mk)
+                else:
+                    human_labeled.add(mk)
         except Exception as exc:
-            logger.warning("second_opinion: human-label check failed: %s", exc)
+            logger.warning("second_opinion: existing-label check failed: %s", exc)
 
-    to_process = [ev for ev in uncertain if ev["merge_key"] not in human_labeled]
-    skipped_human = len(uncertain) - len(to_process)
+    labeled_keys = human_labeled | auto_labeled
+    to_process = [ev for ev in uncertain if ev["merge_key"] not in labeled_keys]
+    skipped_human = sum(1 for ev in uncertain if ev["merge_key"] in human_labeled)
+    skipped_auto = sum(1 for ev in uncertain if ev["merge_key"] in auto_labeled)
+    skipped_labeled = len(uncertain) - len(to_process)
 
     logger.info(
-        "second_opinion: %d uncertain, %d skipped (human-labeled), %d to process",
-        len(uncertain), skipped_human, len(to_process),
+        "second_opinion: %d uncertain, %d skipped (human), %d skipped (auto), %d to process",
+        len(uncertain), skipped_human, skipped_auto, len(to_process),
     )
 
     processed = stored = errors = 0
 
     def _process_one(ev: dict) -> bool:
-        if not ev.get("image_path"):
+        crop_url   = ev.get("crop_url")
+        image_path = ev.get("image_path")
+        if not crop_url and not image_path:
             return False
-        result = call_scout(ev["image_path"], ev["predicted_missing"])
+
+        # Cloud URL is the canonical source; local path is legacy fallback only.
+        if crop_url:
+            result = call_scout(crop_url, ev["predicted_missing"], is_url=True)
+            if result is None and image_path:
+                result = call_scout(image_path, ev["predicted_missing"], is_url=False)
+        else:
+            result = call_scout(image_path, ev["predicted_missing"], is_url=False)
+
         if result is None:
             return False
         return store_auto_label(ev, result)
@@ -378,6 +485,8 @@ async def run_second_opinion_batch(date_str: str | None = None) -> dict:
         "date":           date_str,
         "uncertain":      len(uncertain),
         "skipped_human":  skipped_human,
+        "skipped_auto":   skipped_auto,
+        "skipped_labeled": skipped_labeled,
         "processed":      processed,
         "stored":         stored,
         "errors":         errors,

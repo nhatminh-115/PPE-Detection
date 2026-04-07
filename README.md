@@ -9,7 +9,7 @@
 
 PPE Vision is a real-time, cloud-native inference engine for autonomous Personal Protective Equipment (PPE) compliance monitoring. Engineered for high-stakes construction and industrial environments, the system integrates a multi-stage deep learning pipeline with a compliance reporting layer grounded in Vietnamese labor regulations.
 
-The system is designed as a closed-loop flywheel: every violation detected feeds into a human labeling interface, disagreements are auto-surfaced by a vision second-opinion agent, labeled data is versioned to S3, and model drift automatically triggers EfficientNet retraining on an EC2 Spot Instance — all without manual intervention.
+The system is designed as a closed-loop flywheel: every violation detected feeds into a human labeling interface, disagreements are auto-surfaced by a vision second-opinion agent, labeled data is versioned to S3, and model drift (triggered from human-confirmed disagreement, with Scout as early warning) automatically triggers EfficientNet retraining on an EC2 Spot Instance.
 
 ---
 
@@ -101,16 +101,18 @@ The system implements a closed-loop retraining pipeline that continuously improv
 
 ```
 Violations (Supabase)
-    └── Second Opinion Agent (Groq Scout)
-            └── Human Labeling (Label Studio UI)
-                    └── S3 Export (versioned crops + manifests)
-                            └── Drift Monitor (7-day rolling disagreement rate)
-                                    └── EC2 Spot Retrain (EfficientNet fine-tune → MLflow)
+        └── Second Opinion Agent (Groq Scout, skip already-labeled events)
+          └── Human Labeling (Label Studio UI)
+            └── S3 Export (human-confirmed only)
+              └── Drift Monitor
+            ├── Scout disagreement (observability)
+            └── Human-confirmed disagreement (retrain trigger)
+              └── EC2 Spot Retrain (EfficientNet fine-tune → MLflow)
 ```
 
 ### 2.1 Vision Second Opinion Agent
 
-A Groq vision agent (Llama 4 Scout) runs nightly on all violation events. It auto-labels events as `has-fp`, `has-fn`, or `all-correct` — writing to `ppe_labels` with `is_auto_labeled=True`. Disagreements surface as pre-labeled cards in Label Studio for human review and become the highest-value retraining candidates.
+A Groq vision agent (Llama 4 Scout) runs nightly on uncertain violation events. It skips events that already have labels (human or auto), and auto-labels remaining events as `has-fp`, `has-fn`, or `all-correct` — writing to `ppe_labels` with `is_auto_labeled=True`. Disagreements surface as pre-labeled cards in Label Studio for human review and become high-value retraining candidates.
 
 
 ### 2.2 Human-in-the-Loop Labeling
@@ -131,17 +133,18 @@ ppe-flywheel/
 
 ### 2.4 Drift Monitor & Retrain Trigger
 
-The drift monitor computes a daily disagreement rate from Scout auto-labels:
+The monitor computes two daily disagreement signals:
 
 ```
-disagreement_rate = (has-fp + has-fn) / total auto-labels per day
+scout_disagreement_rate = (has-fp + has-fn on Scout auto-labels) / total Scout auto-labels
+human_disagreement_rate = (has-fp + has-fn on human-confirmed labels) / total confirmed human labels
 ```
 
-Retrain fires when **both** conditions are met:
-- 7-day rolling average `disagreement_rate > DRIFT_THRESHOLD` (default 0.25)
+Retrain trigger uses **human-confirmed disagreement** as canonical signal:
+- 7-day rolling average `human_disagreement_rate > DRIFT_THRESHOLD` (default 0.25)
 - Total confirmed human labels `>= MIN_CONFIRMED_SAMPLES` (default 100)
 
-Results are logged to the `drift_log` Supabase table. When triggered, a GitHub Actions workflow launches an EC2 Spot Instance (t3.medium) that runs `training/retrain_effnet.py` and self-terminates on completion.
+Scout disagreement is still tracked as an early-warning observability metric. Results are logged to `drift_log`. When triggered, a GitHub Actions workflow launches an EC2 Spot Instance (t3.medium) that runs `training/retrain_effnet.py` and self-terminates on completion.
 
 ---
 
@@ -165,7 +168,7 @@ Remote state is stored in the same S3 bucket at `terraform/state/terraform.tfsta
 | Workflow | Trigger | Action |
 |---|---|---|
 | `ci-cd-pipeline.yml` | Push to main | Run pytest, build and push Docker image to Docker Hub |
-| `daily_report.yml` | 23:00 ICT daily | Second opinion → S3 export → drift monitor → LangGraph report → Telegram |
+| `daily_report.yml` | 23:00 ICT daily | Second opinion → LangGraph report → S3 export → drift monitor → cleanup → Telegram |
 | `retrain_trigger.yml` | 23:30 ICT daily | Check drift signal → launch EC2 Spot Instance if triggered |
 | `terraform.yml` | Push/PR on `terraform/**` | Terraform plan (PR) / apply (main) |
 
@@ -181,7 +184,7 @@ Remote state is stored in the same S3 bucket at `terraform/state/terraform.tfsta
 
 An automated reporting pipeline runs daily at 23:00 ICT via GitHub Actions cron.
 
-**Pipeline:** Pull violation logs → Second Opinion Agent → S3 export → Drift monitor → RAG lookup on Thong tu 25/2022 → Groq LLM generates narrative → Telegram + Supabase.
+**Pipeline:** Pull violation logs → Second Opinion Agent → RAG lookup on Thong tu 25/2022 → Groq LLM narrative → S3 export → Drift monitor → cleanup → Telegram + Supabase.
 
 **RAG Layer:** The knowledge base indexes 229 pages of Thong tu 25/2022/TT-BLDTBXH (428 chunks) into ChromaDB using `paraphrase-multilingual-MiniLM-L12-v2` embeddings. Violation types detected automatically generate Vietnamese queries, retrieve top-k regulation chunks, and inject them as grounded context into the Groq prompt.
 
@@ -315,6 +318,7 @@ AWS_DEFAULT_REGION=us-east-1
 # Feature flags
 REPORT_USE_LANGGRAPH=1
 SECOND_OPINION_THRESHOLD=1.0
+CLEANUP_SECRET=your_random_cleanup_secret
 MUTE_THIRD_PARTY_STARTUP_LOGS=1
 QUIET_GET_ACCESS_LOGS=1
 ```
@@ -329,6 +333,8 @@ supabase/migrations/002_ppe_labels_sha256.sql
 supabase/migrations/003_daily_reports_phase2.sql
 supabase/migrations/004_ppe_labels_auto.sql
 supabase/migrations/005_drift_log.sql
+supabase/migrations/006_ppe_labels_expire.sql
+supabase/migrations/007_drift_log_human_signal.sql
 ```
 
 Create a public Storage bucket named `ppe-crops` in Supabase Storage.

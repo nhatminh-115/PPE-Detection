@@ -62,7 +62,12 @@ jobs:
           should       = result.get("retrain_triggered") or force
           rolling_str  = f"{rolling:.4f}" if rolling is not None else "insufficient_data"
 
-          print(f"[drift] date={date_str} rate={result['disagreement_rate']} rolling={rolling_str} trigger={should}")
+            print(
+              f"[drift] date={date_str} "
+              f"human_rate={result['disagreement_rate']} "
+              f"scout_rate={result.get('scout_disagreement_rate')} "
+              f"rolling_human={rolling_str} trigger={should}"
+            )
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
               fh.write(f"should_retrain={str(should).lower()}\n")

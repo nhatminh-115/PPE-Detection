@@ -163,8 +163,10 @@
         .filter-btn { padding: 5px 12px; border-radius: 5px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); font-family: 'JetBrains Mono', monospace; transition: all 0.15s; letter-spacing: 0.03em; }
         .filter-btn:hover  { border-color: var(--accent); color: var(--text-primary); }
         .filter-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-        .filter-btn.fp-btn.active { background: rgba(248,81,73,0.12); border-color: #f85149; color: #f85149; }
-        .filter-btn.fn-btn.active { background: rgba(245,158,11,0.12); border-color: #f59e0b; color: #f59e0b; }
+        .filter-btn.fp-btn.active    { background: rgba(248,81,73,0.12);  border-color: #f85149; color: #f85149; }
+        .filter-btn.fn-btn.active    { background: rgba(245,158,11,0.12); border-color: #f59e0b; color: #f59e0b; }
+        .filter-btn.human-btn.active { background: rgba(63,185,80,0.12);  border-color: #3fb950; color: #3fb950; }
+        .filter-btn.scout-btn.active { background: rgba(163,113,247,0.12);border-color: #a371f7; color: #a371f7; }
         .label-grid-container { flex: 1; overflow-y: auto; min-height: 0; }
         .label-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; padding-bottom: 24px; }
         .label-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; cursor: pointer; transition: border-color 0.15s, transform 0.1s; position: relative; }
@@ -190,6 +192,9 @@
         .conf-chip { font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 2px; letter-spacing: 0.04em; }
         .conf-high { background: rgba(63,185,80,0.12);  color: #3fb950; border: 1px solid rgba(63,185,80,0.25); }
         .conf-mid  { background: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.25); }
+        .prov-chip  { font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 2px; letter-spacing: 0.04em; }
+        .prov-human { background: rgba(63,185,80,0.12);   color: #3fb950; border: 1px solid rgba(63,185,80,0.25); }
+        .prov-scout { background: rgba(163,113,247,0.12); color: #a371f7; border: 1px solid rgba(163,113,247,0.25); }
         .conf-low  { background: rgba(248,81,73,0.12);  color: #f85149; border: 1px solid rgba(248,81,73,0.25); }
         /* Label lightbox */
         .label-lb { position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -426,10 +431,12 @@
                 <div class="lstat lstat-recall" id="lstat-recall-el" style="display:none;">Recall: <span id="lstat-recall-val">—</span></div>
             </div>
             <div class="label-filter-bar">
-                <button class="filter-btn active" id="filter-all"        onclick="setLabelFilter('all')">All</button>
-                <button class="filter-btn"         id="filter-unlabeled" onclick="setLabelFilter('unlabeled')">Unlabeled</button>
-                <button class="filter-btn fp-btn"  id="filter-fp"        onclick="setLabelFilter('fp')">Has FP</button>
-                <button class="filter-btn fn-btn"  id="filter-fn"        onclick="setLabelFilter('fn')">Has FN</button>
+                <button class="filter-btn active"    id="filter-all"       onclick="setLabelFilter('all')">All</button>
+                <button class="filter-btn"           id="filter-unlabeled" onclick="setLabelFilter('unlabeled')">Unlabeled</button>
+                <button class="filter-btn fp-btn"    id="filter-fp"        onclick="setLabelFilter('fp')">Has FP</button>
+                <button class="filter-btn fn-btn"    id="filter-fn"        onclick="setLabelFilter('fn')">Has FN</button>
+                <button class="filter-btn human-btn" id="filter-human"     onclick="setLabelFilter('human')">Human</button>
+                <button class="filter-btn scout-btn" id="filter-scout"     onclick="setLabelFilter('scout')">Scout</button>
             </div>
         </div>
         <div class="label-grid-container">
@@ -1104,6 +1111,12 @@ function confLabel(c) {
 function confChipHtml(c) {
     return `<span class="conf-chip ${confClass(c)}">${confLabel(c)}${c != null ? ' '+( c*100).toFixed(0)+'%' : ''}</span>`;
 }
+function provenanceChipHtml(lbl) {
+    if (!lbl) return '';
+    return lbl.is_auto_labeled
+        ? `<span class="prov-chip prov-scout">Scout</span>`
+        : `<span class="prov-chip prov-human">Human</span>`;
+}
 
 // ── Stats ─────────────────────────────────────────────────────
 function computeLabelStats(){
@@ -1141,16 +1154,18 @@ function renderLabelSummary(){
 // ── Filter ────────────────────────────────────────────────────
 function setLabelFilter(f){
     labelFilter=f;
-    ['all','unlabeled','fp','fn'].forEach(id=>{const el=document.getElementById('filter-'+id);if(el)el.classList.toggle('active',id===f);});
+    ['all','unlabeled','fp','fn','human','scout'].forEach(id=>{const el=document.getElementById('filter-'+id);if(el)el.classList.toggle('active',id===f);});
     applyFilter(); renderLabelGrid();
 }
 
 function applyFilter(){
     const labels = loadLabelsFromStorage();
-    if (labelFilter==='all')       labelFiltered = labelMerged;
+    if      (labelFilter==='all')       labelFiltered = labelMerged;
     else if (labelFilter==='unlabeled') labelFiltered = labelMerged.filter(ev=>!labels[ev.mergeKey]);
-    else if (labelFilter==='fp')   labelFiltered = labelMerged.filter(ev=>labels[ev.mergeKey]?.aggregate==='has-fp');
-    else if (labelFilter==='fn')   labelFiltered = labelMerged.filter(ev=>labels[ev.mergeKey]?.aggregate==='has-fn');
+    else if (labelFilter==='fp')        labelFiltered = labelMerged.filter(ev=>labels[ev.mergeKey]?.aggregate==='has-fp');
+    else if (labelFilter==='fn')        labelFiltered = labelMerged.filter(ev=>labels[ev.mergeKey]?.aggregate==='has-fn');
+    else if (labelFilter==='human')     labelFiltered = labelMerged.filter(ev=>labels[ev.mergeKey] && !labels[ev.mergeKey].is_auto_labeled);
+    else if (labelFilter==='scout')     labelFiltered = labelMerged.filter(ev=>labels[ev.mergeKey]?.is_auto_labeled === true);
     else labelFiltered = labelMerged;
 }
 
@@ -1191,13 +1206,47 @@ function renderLabelGrid(){
         }
 
         // Body
-        const body = document.createElement('div'); body.className = 'label-card-body';
-        const predTags = ev.predicted.map(p=>`<span class="lc-vtag">${p.replace('none_','').toUpperCase()}</span>`).join('');
-        body.innerHTML = `
-            <div class="label-card-id">ID ${ev.tracker_id} · ${ev.model.slice(0,8)}</div>
-            <div class="label-card-time">${timeStr} · ${ev.rows.length} event${ev.rows.length>1?'s':''}</div>
-            <div class="label-card-tags" style="margin-bottom:4px;">${predTags}</div>
-            <div>${confChipHtml(ev.avgConf)}</div>`;
+        const body = document.createElement('div');
+        body.className = 'label-card-body';
+
+        const idEl = document.createElement('div');
+        idEl.className = 'label-card-id';
+        idEl.textContent = `ID ${ev.tracker_id} · ${ev.model.slice(0,8)}`;
+
+        const timeEl = document.createElement('div');
+        timeEl.className = 'label-card-time';
+        timeEl.textContent = `${timeStr} · ${ev.rows.length} event${ev.rows.length>1?'s':''}`;
+
+        const tagsEl = document.createElement('div');
+        tagsEl.className = 'label-card-tags';
+        tagsEl.style.marginBottom = '4px';
+        ev.predicted.forEach(p => {
+            const tag = document.createElement('span');
+            tag.className = 'lc-vtag';
+            tag.textContent = String(p).replace('none_','').toUpperCase();
+            tagsEl.appendChild(tag);
+        });
+
+        const chipsEl = document.createElement('div');
+        chipsEl.style.display = 'flex';
+        chipsEl.style.gap = '4px';
+        chipsEl.style.flexWrap = 'wrap';
+
+        const confWrap = document.createElement('span');
+        confWrap.innerHTML = confChipHtml(ev.avgConf);
+        if (confWrap.firstChild) chipsEl.appendChild(confWrap.firstChild);
+
+        const provHtml = provenanceChipHtml(lbl);
+        if (provHtml) {
+            const provWrap = document.createElement('span');
+            provWrap.innerHTML = provHtml;
+            if (provWrap.firstChild) chipsEl.appendChild(provWrap.firstChild);
+        }
+
+        body.appendChild(idEl);
+        body.appendChild(timeEl);
+        body.appendChild(tagsEl);
+        body.appendChild(chipsEl);
 
         card.appendChild(imgDiv); card.appendChild(body);
         card.addEventListener('click', ()=>openLabelLb(idx));
@@ -1254,8 +1303,19 @@ function renderLbContent(){
         ? ev.predicted.map(p=>`<span class="pred-chip">${p.replace('none_','').toUpperCase()}</span>`).join('')
         : '<span style="font-size:10px;color:var(--text-muted)">none</span>';
 
-    // Tracker info
-    document.getElementById('llb-tracker-info').textContent = `ID ${ev.tracker_id} · ${ev.model.slice(0,8)} · ${ev.rows.length} event${ev.rows.length>1?'s':''}`;
+    // Tracker info + provenance — build with DOM API to avoid XSS from dynamic model/tracker values.
+    const provHtml = provenanceChipHtml(lbl);
+    const trackerInfoEl = document.getElementById('llb-tracker-info');
+    trackerInfoEl.textContent = '';
+    trackerInfoEl.appendChild(document.createTextNode(
+        `ID ${ev.tracker_id} \u00b7 ${ev.model.slice(0,8)} \u00b7 ${ev.rows.length} event${ev.rows.length>1?'s':''}`
+    ));
+    if (provHtml) {
+        trackerInfoEl.appendChild(document.createTextNode(' '));
+        const _chipWrap = document.createElement('span');
+        _chipWrap.innerHTML = provHtml; // provenanceChipHtml returns only static safe markup
+        if (_chipWrap.firstChild) trackerInfoEl.appendChild(_chipWrap.firstChild);
+    }
     const confEl = document.getElementById('llb-conf');
     if (confEl) confEl.innerHTML = confChipHtml(ev.avgConf);
 
@@ -1348,6 +1408,9 @@ async function loadLabelData(){
                     per_item: row.per_item || {}, aggregate: row.aggregate,
                     skipped: row.skipped, model: row.model, row_ids: row.row_ids || [],
                     first_created_at: row.first_created_at, labeled_at: row.labeled_at,
+                    is_auto_labeled: row.is_auto_labeled || false,
+                    labeled_by: row.labeled_by || null,
+                    auto_label_model: row.auto_label_model || null,
                 };
             }
         });

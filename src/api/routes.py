@@ -16,7 +16,7 @@ from postgrest.exceptions import APIError as SupabaseAPIError
 from src.config import PPE_THRESHOLDS
 from src.inference.tracker import reported_violations
 import src.inference.classifier as _clf
-from src.api.label_service import upsert_label, list_labels, get_daily_quality, backfill_model_metadata
+from src.api.label_service import upsert_label, list_labels, get_daily_quality, backfill_model_metadata, cleanup_expired_crops
 
 logger = logging.getLogger(__name__)
 
@@ -814,6 +814,24 @@ def backfill_labels_metadata():
     where model_name is null. Safe to call multiple times — only touches null rows.
     """
     return backfill_model_metadata()
+
+
+@app.post("/api/labels/cleanup")
+def cleanup_labels(request: Request):
+    """
+    Purge expired crops from Supabase Storage and null stale crop refs in ppe_labels.
+    Scout auto-labels expire after 2 days; human labels expire after 3 days.
+
+    When env var CLEANUP_SECRET is set, the caller must provide the same value
+    in the X-Cleanup-Secret request header, otherwise 401 is returned.
+    This prevents accidental or unauthorized destructive calls.
+    """
+    import os
+    from fastapi import HTTPException
+    secret = os.environ.get("CLEANUP_SECRET")
+    if secret and request.headers.get("X-Cleanup-Secret", "") != secret:
+        raise HTTPException(status_code=401, detail="X-Cleanup-Secret header missing or incorrect")
+    return cleanup_expired_crops()
 
 
 @app.post("/api/flush")

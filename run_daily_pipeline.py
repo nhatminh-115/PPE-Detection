@@ -4,7 +4,10 @@ Daily pipeline entrypoint for GitHub Actions.
 Order:
   1. Second opinion batch — auto-label uncertain events for today.
   2. LangGraph report    — multi-agent daily report with quality metrics.
-  3. Telegram notify     — send summary to ops channel.
+  3. S3 upload           — export confirmed labels to S3.
+  4. Drift monitor       — scout disagreement rate and retrain trigger.
+  5. Cleanup             — purge expired crops from Supabase Storage.
+  6. Telegram notify     — send summary to ops channel.
 
 Run:
     python run_daily_pipeline.py [YYYY-MM-DD]
@@ -78,8 +81,17 @@ async def main() -> None:
     except Exception as exc:
         print(f"[daily_pipeline] Drift monitor failed (non-fatal): {exc}")
 
-    # ── Step 5: Telegram notification ─────────────────────────────
-    print("[daily_pipeline] Step 5: Telegram notification")
+    # ── Step 5: Cleanup expired crops ──────────────────────────────
+    print("[daily_pipeline] Step 5: cleanup expired crops")
+    try:
+        from src.api.label_service import cleanup_expired_crops
+        cleanup_result = cleanup_expired_crops()
+        print(f"[daily_pipeline] Cleanup: {cleanup_result}")
+    except Exception as exc:
+        print(f"[daily_pipeline] Cleanup failed (non-fatal): {exc}")
+
+    # ── Step 6: Telegram notification ─────────────────────────────
+    print("[daily_pipeline] Step 6: Telegram notification")
     try:
         _send_telegram(date_str, report, so_result, drift_result)
     except Exception as exc:
@@ -120,10 +132,13 @@ def _send_telegram(date_str: str, report: dict, so_result: dict, drift_result: d
     if drift_result:
         rolling = drift_result.get("rolling_7d_rate")
         rate    = drift_result.get("disagreement_rate", 0.0)
+        scout_rate = drift_result.get("scout_disagreement_rate")
         trigger = drift_result.get("retrain_triggered", False)
         rate_str    = f"{rate:.0%}"
         rolling_str = f"{rolling:.0%}" if rolling is not None else "n/a"
-        drift_line  = f"\nDrift: {rate_str} today | 7d avg {rolling_str}"
+        drift_line  = f"\nDrift (human): {rate_str} today | 7d avg {rolling_str}"
+        if scout_rate is not None:
+            drift_line += f" | scout {scout_rate:.0%}"
         if trigger:
             drift_line += " [RETRAIN TRIGGERED]"
 
