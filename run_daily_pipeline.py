@@ -111,10 +111,12 @@ def _send_telegram(date_str: str, report: dict, so_result: dict, drift_result: d
 
     prec = quality.get("precision")
     rec  = quality.get("recall")
-    quality_line = (
-        f"Precision: {prec:.0%} | Recall: {rec:.0%}"
-        if prec is not None and rec is not None
-        else f"Quality: {quality.get('label_coverage_note', 'no data')}"
+    prec_str = f"{prec:.0%}" if prec is not None else "n/a"
+    rec_str  = f"{rec:.0%}" if rec is not None else "n/a"
+    quality_line = f"Quality ({quality.get('label_coverage_note', 'no data')}): Precision {prec_str} | Recall {rec_str}"
+    quality_counts_line = (
+        f"\nQuality counts: TP {quality.get('item_tp', 0)} | FP {quality.get('item_fp', 0)} | "
+        f"FN {quality.get('item_fn', 0)} | TN {quality.get('item_tn', 0)}"
     )
 
     so_line = ""
@@ -129,6 +131,7 @@ def _send_telegram(date_str: str, report: dict, so_result: dict, drift_result: d
         flags_text = "\nFlags:\n" + "\n".join(f"  - {f}" for f in flags[:3])
 
     drift_line = ""
+    drift_counts_line = ""
     if drift_result:
         rolling = drift_result.get("rolling_7d_rate")
         rate    = drift_result.get("disagreement_rate", 0.0)
@@ -139,6 +142,11 @@ def _send_telegram(date_str: str, report: dict, so_result: dict, drift_result: d
         drift_line  = f"\nDrift (human): {rate_str} today | 7d avg {rolling_str}"
         if scout_rate is not None:
             drift_line += f" | scout {scout_rate:.0%}"
+        human_dis = int(drift_result.get("human_disagreements", 0) or 0)
+        human_tot = int(drift_result.get("human_total_confirmed", 0) or 0)
+        scout_dis = int(drift_result.get("scout_disagreements", 0) or 0)
+        scout_tot = int(drift_result.get("scout_total_auto", 0) or 0)
+        drift_counts_line = f"\nDrift counts: human {human_dis}/{human_tot} | scout {scout_dis}/{scout_tot}"
         if trigger:
             drift_line += " [RETRAIN TRIGGERED]"
 
@@ -150,8 +158,10 @@ def _send_telegram(date_str: str, report: dict, so_result: dict, drift_result: d
         f"Vest miss    : {summary.get('none_vest', 0)}\n"
         f"Peak hour    : {summary.get('peak_hour', 'N/A')}\n"
         f"{quality_line}"
+        f"{quality_counts_line}"
         f"{so_line}"
         f"{drift_line}"
+        f"{drift_counts_line}"
         f"{flags_text}\n"
         f"{'=' * 40}\n\n"
         f"{narrative}"
