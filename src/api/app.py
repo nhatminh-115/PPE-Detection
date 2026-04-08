@@ -175,7 +175,7 @@ siglip_model, _, siglip_preprocess = _run_quiet_startup(
         SIGLIP_MODEL_NAME, pretrained=SIGLIP_PRETRAINED,
     ),
 )
-siglip_model.eval().to(device)
+siglip_model.eval().to(device) 
 
 # Pre-compute text embeddings (once at startup)
 tokenizer = _run_quiet_startup(
