@@ -204,7 +204,9 @@ An automated reporting pipeline runs daily at 23:00 ICT via GitHub Actions cron.
 ![Daily Report Supabase](docs/Daily_report_supabase.png)
 
 **Telegram Report:**
-![Telegram Report](docs/Telegram_report.png)
+![Telegram Report1](docs/Telegram_report.png)
+![Telegram Report2](docs/Telegram_Instant_Alert.png)
+
 
 ---
 
@@ -258,11 +260,16 @@ Evaluated across 10 synthetic violation scenarios via LLM-as-judge (Gemini 3.1 P
 ![YOLO11s Metrics](docs/Yolo11s_metrics.png)
 
 **Supabase Database**
-![Supabase](docs/Supabase.png)
+![Supabase1](docs/Supabase.png)
+![Supabase2](docs/Supabase_Storage.png)
 
 **User Interface**
 ![UI 1](docs/UI_1.png)
 ![UI 2](docs/UI_2.png)
+![UI 3](docs/Violation_Log.png)
+![UI 2](docs/Label_Studio.png)
+
+
 
 **Video Demo**
 
