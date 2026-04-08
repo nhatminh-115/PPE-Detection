@@ -135,10 +135,25 @@ _configure_access_logging()
 MUTE_STARTUP_NOISE = os.getenv("MUTE_THIRD_PARTY_STARTUP_LOGS", "1") == "1"
 
 
-def _quiet_startup_contexts():
-    if MUTE_STARTUP_NOISE:
-        return redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO())
-    return nullcontext(), nullcontext()
+def _run_quiet_startup(step_name, fn):
+    """Run noisy startup steps with optional output suppression and explicit error logging."""
+    if not MUTE_STARTUP_NOISE:
+        return fn()
+
+    stdout_buffer = io.StringIO()
+    stderr_buffer = io.StringIO()
+    try:
+        with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
+            return fn()
+    except Exception:
+        captured_stdout = stdout_buffer.getvalue().strip()
+        captured_stderr = stderr_buffer.getvalue().strip()
+        if captured_stdout:
+            logger.error("%s stdout before failure:\n%s", step_name, captured_stdout)
+        if captured_stderr:
+            logger.error("%s stderr before failure:\n%s", step_name, captured_stderr)
+        logger.exception("%s failed during startup.", step_name)
+        raise
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +163,47 @@ os.makedirs("temp_uploads", exist_ok=True)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 logger.info(f"Inference device: {device}")
+
+# ---------------------------------------------------------------------------
+# SigLIP model + text features
+# ---------------------------------------------------------------------------
+
+logger.info(f"Loading SigLIP {SIGLIP_MODEL_NAME} ({SIGLIP_PRETRAINED})...")
+siglip_model, _, siglip_preprocess = _run_quiet_startup(
+    "SigLIP model init",
+    lambda: open_clip.create_model_and_transforms(
+        SIGLIP_MODEL_NAME, pretrained=SIGLIP_PRETRAINED,
+    ),
+)
+siglip_model.eval().to(device)
+
+# Pre-compute text embeddings (once at startup)
+tokenizer = _run_quiet_startup(
+    "SigLIP tokenizer init",
+    lambda: open_clip.get_tokenizer(SIGLIP_MODEL_NAME),
+)
+siglip_text_features = {}
+
+with torch.no_grad():
+    for category, prompts in SIGLIP_PROMPTS.items():
+        pos_tokens = tokenizer(prompts['positive']).to(device)
+        neg_tokens = tokenizer(prompts['negative']).to(device)
+        pos_feat = siglip_model.encode_text(pos_tokens).mean(dim=0)
+        neg_feat = siglip_model.encode_text(neg_tokens).mean(dim=0)
+        pos_feat = pos_feat / pos_feat.norm()
+        neg_feat = neg_feat / neg_feat.norm()
+        siglip_text_features[category] = torch.stack([pos_feat, neg_feat])
+
+# Warmup
+with torch.no_grad():
+    warmup_size = getattr(getattr(siglip_model, "visual", None), "image_size", 224)
+    if isinstance(warmup_size, (tuple, list)):
+        warmup_h = int(warmup_size[0])
+        warmup_w = int(warmup_size[1] if len(warmup_size) > 1 else warmup_size[0])
+    else:
+        warmup_h = warmup_w = int(warmup_size)
+    siglip_model.encode_image(torch.zeros(1, 3, warmup_h, warmup_w).to(device))
+logger.info("SigLIP model ready.")
 
 model1_path     = pull_artifact_from_mlflow_run(MLFLOW_RUN_ID, MLFLOW_ARTIFACT_PATH)
 model2_path     = MODEL2_PATH
@@ -165,40 +221,6 @@ model_pose = YOLO(model_pose_path)
 dummy = torch.zeros((1, 3, 640, 640)).to(device)
 model2.predict(dummy, device=device, verbose=False)
 model_pose.predict(dummy, device=device, verbose=False)
-
-
-# ---------------------------------------------------------------------------
-# SigLIP model + text features
-# ---------------------------------------------------------------------------
-
-logger.info(f"Loading SigLIP {SIGLIP_MODEL_NAME} ({SIGLIP_PRETRAINED})...")
-stdout_ctx, stderr_ctx = _quiet_startup_contexts()
-with stdout_ctx, stderr_ctx:
-    siglip_model, _, siglip_preprocess = open_clip.create_model_and_transforms(
-        SIGLIP_MODEL_NAME, pretrained=SIGLIP_PRETRAINED,
-    )
-siglip_model.eval().to(device)
-
-# Pre-compute text embeddings (once at startup)
-stdout_ctx, stderr_ctx = _quiet_startup_contexts()
-with stdout_ctx, stderr_ctx:
-    tokenizer = open_clip.get_tokenizer(SIGLIP_MODEL_NAME)
-siglip_text_features = {}
-
-with torch.no_grad():
-    for category, prompts in SIGLIP_PROMPTS.items():
-        pos_tokens = tokenizer(prompts['positive']).to(device)
-        neg_tokens = tokenizer(prompts['negative']).to(device)
-        pos_feat = siglip_model.encode_text(pos_tokens).mean(dim=0)
-        neg_feat = siglip_model.encode_text(neg_tokens).mean(dim=0)
-        pos_feat = pos_feat / pos_feat.norm()
-        neg_feat = neg_feat / neg_feat.norm()
-        siglip_text_features[category] = torch.stack([pos_feat, neg_feat])
-
-# Warmup
-with torch.no_grad():
-    siglip_model.encode_image(torch.zeros(1, 3, 224, 224).to(device))
-logger.info("SigLIP model ready.")
 
 effnet_preprocess = transforms.Compose([
     transforms.Resize((IMG_SIZE, IMG_SIZE)),
