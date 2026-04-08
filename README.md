@@ -54,7 +54,7 @@ To reduce redundant GPU inference, each tracker follows a three-state lifecycle:
 
 Classification is routed by bounding box size:
 
-* **Small boxes (min side < 110px) → EfficientNetV2-B0:** Full-body crop with 10% padding. Trained on processed Ultralytics PPE dataset (F1=0.92). Lightweight and fast for distant detections.
+* **Small boxes (min side < 110px) → EfficientNetV2-B0:** Full-body crop with 10% padding. Trained on processed Ultralytics PPE dataset (F1=0.92). Runtime prefers ONNX for this branch; if the exported ONNX model has a fixed batch dimension, the worker automatically chunks inputs to keep inference stable.
 
 * **Large boxes (min side >= 110px) → SigLIP SO400M:** Zero-shot classification using text prompts. YOLO26m-pose runs every 9 frames to extract COCO keypoints and define precise crop regions:
   * **Hardhat crop:** Head keypoints (nose, eyes, ears — indices 0-4), pad 45%.
@@ -144,7 +144,7 @@ Retrain trigger uses **human-confirmed disagreement** as canonical signal:
 - 7-day rolling average `human_disagreement_rate > DRIFT_THRESHOLD` (default 0.25)
 - Total confirmed human labels `>= MIN_CONFIRMED_SAMPLES` (default 100)
 
-Scout disagreement is still tracked as an early-warning observability metric. Results are logged to `drift_log`. When triggered, a GitHub Actions workflow launches an EC2 Spot Instance (t3.medium) that runs `training/retrain_effnet.py` and self-terminates on completion.
+Scout disagreement is still tracked as an early-warning observability metric. Results are logged to `drift_log`. When triggered, a GitHub Actions workflow launches an EC2 Spot Instance (t3.medium) that runs `training/retrain_effnet.py`, exports both `weights/best_flywheel_effnet.pt` and `weights/effnet_ppe.onnx`, and self-terminates on completion.
 
 ---
 
@@ -175,7 +175,7 @@ Remote state is stored in the same S3 bucket at `terraform/state/terraform.tfsta
 ### 3.3 Artifact Registry
 
 * **Docker:** Docker Hub (`nhatminh115/ppe_system:latest`)
-* **Model weights:** MLflow on DagsHub ([tracking URI](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow))
+* **Model weights:** MLflow on DagsHub ([tracking URI](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow)) with stable ONNX artifact at `weights/effnet_ppe.onnx`
 * **Dataset:** S3 (`ppe-flywheel/ppe-flywheel/`)
 
 ---
@@ -238,7 +238,7 @@ An automated reporting pipeline runs daily at 23:00 ICT via GitHub Actions cron.
 | PyTorch (CPU) | ~45 ms | ~22 FPS | 22.4 MB |
 | ONNX FP32 (CPU) | 7.46 ms | 134 FPS | 22.4 MB |
 
-> ~6x speedup via ONNX Runtime graph optimization. Model artifact: [MLflow Run](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow)
+> ~6x speedup via ONNX Runtime graph optimization. Stable ONNX artifact: [MLflow Run](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow) → run `af05de89dacb4aaf893c68a2e4552ba3`.
 
 ### LLM Report Quality
 
@@ -333,21 +333,56 @@ MUTE_THIRD_PARTY_STARTUP_LOGS=1
 QUIET_GET_ACCESS_LOGS=1
 ```
 
-### Step 2 — Supabase setup
+### Step 2 — Supabase Database Setup
 
-Run SQL migrations in order in the Supabase SQL editor:
+#### Option A: Quick Setup (Consolidated Schema)
 
+For fastest setup, load the consolidated schema file containing all tables, indexes, and RLS policies:
+
+1. Open Supabase dashboard → `SQL` editor
+2. Create a new query and paste the contents of [`supabase/consolidated_schema.sql`](supabase/consolidated_schema.sql)
+3. Execute the query
+
+This creates 5 tables in one step:
+- `ppe_labels`: Current annotation state
+- `ppe_label_audit`: Immutable change log
+- `ppe_violations`: Raw detection events
+- `daily_reports`: End-of-day compliance snapshots
+- `drift_log`: Model drift tracking for retrain triggers
+
+#### Option B: Version-Controlled Migrations
+
+For version control (e.g., with `supabase` CLI), apply migrations sequentially:
+
+```bash
+supabase migration up
+# OR manually in Supabase SQL editor, run in order:
+# 001_ppe_labels.sql           — Core tables: ppe_labels, ppe_label_audit, RLS
+# 002_ppe_labels_sha256.sql    — Add crop deduplication
+# 003_daily_reports_phase2.sql — Add quality metrics & systemic flags
+# 004_ppe_labels_auto.sql      — Mark auto-labeled rows (Scout)
+# 005_drift_log.sql            — Drift monitoring table
+# 006_ppe_labels_expire.sql    — Retention policy columns
+# 007_drift_log_human_signal.sql — Human vs Scout disagreement signals
 ```
-supabase/migrations/001_ppe_labels.sql
-supabase/migrations/002_ppe_labels_sha256.sql
-supabase/migrations/003_daily_reports_phase2.sql
-supabase/migrations/004_ppe_labels_auto.sql
-supabase/migrations/005_drift_log.sql
-supabase/migrations/006_ppe_labels_expire.sql
-supabase/migrations/007_drift_log_human_signal.sql
+
+#### Create Storage Bucket
+
+In Supabase Storage:
+1. Click **New bucket**
+2. Name: `ppe-crops`
+3. Make it **Public** (RLS will restrict access server-side)
+4. Create
+
+#### Verify Schema
+
+Check that tables exist:
+
+```sql
+SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
 ```
 
-Create a public Storage bucket named `ppe-crops` in Supabase Storage.
+Expected tables: `daily_reports`, `drift_log`, `ppe_label_audit`, `ppe_labels`, `ppe_violations`
 
 ### Step 3 — Build the RAG index
 
@@ -416,18 +451,96 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 | `RETRAIN_LAUNCH_TEMPLATE_ID` | From `terraform output` | - |
 | `RETRAIN_SUBNET_ID` | From `terraform output` | - |
 
-### Step 6 — Run the inference engine
+### Step 6 — Run the Inference Engine
+
+#### Option A: Build & Run Locally
 
 ```bash
+# Build Docker image with GPU support
 docker-compose up --build -d
+
+# View logs
+docker-compose logs -f ppe_inference_engine
 ```
 
-Or pull the pre-built image:
+#### Option B: Docker Hub Pre-built Image
+
+Pull the pre-built image from Docker Hub (faster):
 
 ```bash
+# Login to Docker Hub (optional, for private images)
+docker login
+
+# Pull latest image
 docker pull nhatminh115/ppe_system:latest
+
+# Run with docker-compose
 docker-compose up -d
+
+# Or run directly
+docker run -d \
+  --gpus all \
+  --name ppe_inference \
+  -p 8000:8000 \
+  --env-file .env \
+  -v $(pwd)/model_cache:/app/model_cache \
+  -v $(pwd)/violation_crops:/app/violation_crops \
+  -v $(pwd)/temp_uploads:/app/temp_uploads \
+  nhatminh115/ppe_system:latest
 ```
+
+#### Verify Container
+
+```bash
+# Check running containers
+docker ps | grep ppe
+
+# Test API health
+curl http://localhost:8000/api/health
+
+# View logs
+docker logs -f ppe_inference_engine  # or ppe_inference (if run directly)
+
+# Check GPU usage inside container
+docker exec ppe_inference_engine nvidia-smi
+```
+
+#### Environment Requirements
+
+**GPU:** NVIDIA GPU with CUDA 12.8+
+- Check: `nvidia-smi`
+- Install NVIDIA Container Toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+
+**Docker:** 24.0+
+- Check: `docker --version`
+
+**Docker Compose:** 2.0+
+- Check: `docker-compose --version`
+
+#### Production Deployment
+
+For production, use a container registry (Docker Hub, ECR, GCR):
+
+```bash
+# Build and tag
+docker build -t nhatminh115/ppe_system:v1.0.0 .
+
+# Push to Docker Hub
+docker push nhatminh115/ppe_system:v1.0.0
+
+# On production machine, pull and run
+docker pull nhatminh115/ppe_system:v1.0.0
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+#### Troubleshooting
+
+| Issue | Solution |
+|---|---|
+| CUDA out of memory | Reduce batch size in `src/config.py` or use INT8 quantized ONNX |
+| Image pull fails | Ensure Docker Hub login: `docker login` |
+| GPU not detected | Verify NVIDIA Container Toolkit: `docker run --rm --runtime=nvidia nvidia/cuda:12.8-runtime nvidia-smi` |
+| Port 8000 already in use | Change port: `docker-compose -e PORT=8001 up -d` |
 
 ### Step 7 — Access the dashboard
 

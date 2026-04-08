@@ -7,6 +7,8 @@ import torch
 import open_clip
 import timm
 import concurrent.futures
+import numpy as np
+import onnxruntime as ort
 from torchvision import transforms
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -15,7 +17,10 @@ from ultralytics import YOLO
 from src.config import (
     SIGLIP_MODEL_NAME, SIGLIP_PRETRAINED, SIGLIP_PROMPTS,
     IMG_SIZE, NUM_CLASSES,
-    EFFNET_RUN_ID, EFFNET_ARTIFACT_PATH, EFFNET_LOCAL_FALLBACK_PATH,
+    EFFNET_RUN_ID, EFFNET_STABLE_RUN_ID,
+    EFFNET_ONNX_ARTIFACT_PATH, EFFNET_ONNX_LOCAL_FALLBACK,
+    EFFNET_ONNX_INT8_FALLBACK, EFFNET_PT_ARTIFACT_PATH, EFFNET_PT_LOCAL_FALLBACK,
+    EFFNET_USE_ONNX, EFFNET_PREFER_RECENT_PT,
     MLFLOW_RUN_ID, MLFLOW_ARTIFACT_PATH,
     MODEL2_PATH, MODEL_POSE_PATH,
     INFERENCE_THREAD_WORKERS,
@@ -199,23 +204,13 @@ effnet_preprocess = transforms.Compose([
 ])
 
 
-def _load_effnet_bundle():
-    effnet_mlflow_path = pull_artifact_from_mlflow_run(
-        run_id=EFFNET_RUN_ID,
-        artifact_path=EFFNET_ARTIFACT_PATH,
-    )
-    candidates = [
-        effnet_mlflow_path,
-        EFFNET_LOCAL_FALLBACK_PATH,
-    ]
-
-    for path in candidates:
-        if not os.path.exists(path):
-            continue
+def _load_effnet_pytorch():
+    """Load PyTorch fallback from local file only (no remote pull)."""
+    if EFFNET_PT_LOCAL_FALLBACK and os.path.exists(EFFNET_PT_LOCAL_FALLBACK):
         try:
-            logger.info(f"Loading EffNet stage-2 weights from {path}...")
+            logger.info(f"Loading EffNet PyTorch from {EFFNET_PT_LOCAL_FALLBACK}...")
             effnet = timm.create_model('tf_efficientnetv2_b0', pretrained=False, num_classes=NUM_CLASSES)
-            state = torch.load(path, map_location=device)
+            state = torch.load(EFFNET_PT_LOCAL_FALLBACK, map_location=device)
 
             if isinstance(state, dict) and "state_dict" in state:
                 state = state["state_dict"]
@@ -225,27 +220,185 @@ def _load_effnet_bundle():
                     for k, v in state.items()
                 }
 
-            missing, unexpected = effnet.load_state_dict(state, strict=False)
-            if missing:
-                logger.warning(f"EffNet missing keys: {len(missing)}")
-            if unexpected:
-                logger.warning(f"EffNet unexpected keys: {len(unexpected)}")
-
+            effnet.load_state_dict(state, strict=False)
             effnet.eval().to(device)
             with torch.no_grad():
                 effnet(torch.zeros(1, 3, IMG_SIZE, IMG_SIZE).to(device))
 
-            logger.info("EffNet model ready.")
+            logger.info("✓ EffNet PyTorch model ready (local).")
             return {
                 "model": effnet,
                 "preprocess": effnet_preprocess,
-                "weights_path": path,
+                "weights_path": EFFNET_PT_LOCAL_FALLBACK,
+                "format": "pytorch",
             }
         except Exception as ex:
-            logger.warning(f"EffNet load failed for {path}: {ex}")
+            logger.warning(f"EffNet PyTorch load failed for {EFFNET_PT_LOCAL_FALLBACK}: {ex}")
 
-    logger.warning("No compatible EffNet stage-2 weights found. Router will fall back to SigLIP.")
     return None
+
+
+def _load_effnet_bundle():
+    """
+    Load EfficientNet stage-2 classifier with smart strategy.
+    
+    If PREFER_RECENT_PT=True (default):
+      1. Try recent PT from EFFNET_RUN_ID (likely new retrain) → use immediately
+      2. Try stable ONNX from EFFNET_STABLE_RUN_ID → proven production quality
+      3. Local ONNX cache (FP32/INT8)
+      4. Fallback to PT
+      
+    If PREFER_RECENT_PT=False:
+      1. Try stable ONNX first (proven quality)
+      2. Then recent PT (retrain)
+      3. Local ONNX
+      4. Fallback to PT
+      
+    This balances:
+    - New retrain adoption (recent PT available immediately after drift trigger)
+    - Production stability (stable ONNX always available as fallback)
+    - Performance (ONNX 6x faster than PT)
+    """
+    if EFFNET_PREFER_RECENT_PT:
+        # Strategy 1: Prefer recent PT retrain (new models used immediately)
+        logger.debug(f"Loading EffNet: Priority = RECENT_PT > STABLE_ONNX > LOCAL > FALLBACK_PT")
+        
+        # Try recent PT from retrain
+        bundle = _load_effnet_pytorch_from_run(EFFNET_RUN_ID)
+        if bundle is not None:
+            logger.info("✓ Loaded recent PT from retrain run (EffNet latest)")
+            return bundle
+        
+        # Try stable ONNX (proven, trusted)
+        bundle = _load_effnet_onnx_from_run(EFFNET_STABLE_RUN_ID)
+        if bundle is not None:
+            logger.info("✓ Loaded stable ONNX from verified run (EffNet stable)")
+            return bundle
+        
+        # Try local ONNX (pre-cached)
+        bundle = _load_effnet_onnx_local()
+        if bundle is not None:
+            logger.info("✓ Loaded ONNX from local cache")
+            return bundle
+        
+        # Last resort: PT fallback
+        bundle = _load_effnet_pytorch()
+        if bundle is not None:
+            logger.info("⚠ Loaded PyTorch fallback (ONNX unavailable)")
+            return bundle
+    else:
+        # Strategy 2: Prefer stable ONNX (safer, proven)
+        logger.debug(f"Loading EffNet: Priority = STABLE_ONNX > RECENT_PT > LOCAL > FALLBACK_PT")
+        
+        # Try stable ONNX first
+        bundle = _load_effnet_onnx_from_run(EFFNET_STABLE_RUN_ID)
+        if bundle is not None:
+            logger.info("✓ Loaded stable ONNX from verified run")
+            return bundle
+        
+        # Try recent PT (newer, but untested)
+        bundle = _load_effnet_pytorch_from_run(EFFNET_RUN_ID)
+        if bundle is not None:
+            logger.info("○ Loaded recent PT (stable ONNX unavailable)")
+            return bundle
+        
+        # Try local cache
+        bundle = _load_effnet_onnx_local()
+        if bundle is not None:
+            logger.info("✓ Loaded ONNX from local cache")
+            return bundle
+        
+        # Fallback
+        bundle = _load_effnet_pytorch()
+        if bundle is not None:
+            logger.info("⚠ Loaded PyTorch fallback")
+            return bundle
+    
+    logger.warning("✗ No compatible EffNet stage-2 weights found. Router will fall back to SigLIP.")
+    return None
+
+
+def _load_effnet_onnx_local():
+    """Load ONNX from local cache (no remote pull)."""
+    for path in [EFFNET_ONNX_LOCAL_FALLBACK, EFFNET_ONNX_INT8_FALLBACK]:
+        if path and os.path.exists(path):
+            try:
+                logger.info(f"Loading EffNet ONNX from {path}...")
+                session = ort.InferenceSession(
+                    path,
+                    providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
+                    sess_options=ort.SessionOptions(),
+                )
+                return {
+                    "model": session,
+                    "preprocess": effnet_preprocess,
+                    "weights_path": path,
+                    "format": "onnx",
+                }
+            except Exception as ex:
+                logger.warning(f"Failed to load {path}: {ex}")
+    return None
+
+
+def _load_effnet_onnx_from_run(run_id: str):
+    """Load ONNX from specific MLflow run (with remote pull)."""
+    try:
+        onnx_mlflow_path = pull_artifact_from_mlflow_run(
+            run_id=run_id,
+            artifact_path=EFFNET_ONNX_ARTIFACT_PATH,
+        )
+        if onnx_mlflow_path and os.path.exists(onnx_mlflow_path):
+            logger.info(f"Loading EffNet ONNX from MLflow run {run_id}...")
+            session = ort.InferenceSession(
+                onnx_mlflow_path,
+                providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
+                sess_options=ort.SessionOptions(),
+            )
+            return {
+                "model": session,
+                "preprocess": effnet_preprocess,
+                "weights_path": onnx_mlflow_path,
+                "format": "onnx",
+                "source_run_id": run_id,
+            }
+    except Exception as ex:
+        logger.debug(f"Failed to load ONNX from run {run_id}: {ex}")
+    return None
+
+
+def _load_effnet_pytorch_from_run(run_id: str):
+    """Load PyTorch from specific MLflow run (with remote pull)."""
+    try:
+        effnet_mlflow_path = pull_artifact_from_mlflow_run(
+            run_id=run_id,
+            artifact_path=EFFNET_PT_ARTIFACT_PATH,
+        )
+        if effnet_mlflow_path and os.path.exists(effnet_mlflow_path):
+            logger.info(f"Loading EffNet PyTorch from MLflow run {run_id}...")
+            effnet = timm.create_model('tf_efficientnetv2_b0', pretrained=False, num_classes=NUM_CLASSES)
+            state = torch.load(effnet_mlflow_path, map_location=device)
+
+            if isinstance(state, dict) and "state_dict" in state:
+                state = state["state_dict"]
+            if isinstance(state, dict):
+                state = {(k[7:] if k.startswith("module.") else k): v for k, v in state.items()}
+
+            effnet.load_state_dict(state, strict=False)
+            effnet.eval().to(device)
+            with torch.no_grad():
+                effnet(torch.zeros(1, 3, IMG_SIZE, IMG_SIZE).to(device))
+
+            return {
+                "model": effnet,
+                "preprocess": effnet_preprocess,
+                "weights_path": effnet_mlflow_path,
+                "format": "pytorch",
+                "source_run_id": run_id,
+            }
+    except Exception as ex:
+        logger.debug(f"Failed to load PyTorch from run {run_id}: {ex}")
+    return None
+
 
 
 # Bundle for classifier

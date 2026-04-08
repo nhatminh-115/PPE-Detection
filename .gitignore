@@ -232,7 +232,7 @@ Thumbs.db
 .env.*
 !.env.example
 
-supabase
+
 benchmark_sr.py
 .claude/
 .agents/

@@ -303,10 +303,88 @@ def train(images_dir: Path, train_csv: Path, val_csv: Path, out_dir: Path) -> st
     return str(best_path)
 
 
+# ── ONNX Export ────────────────────────────────────────────────────────────────
+
+def export_to_onnx(pt_path: str, onnx_path: str) -> bool:
+    """
+    Export PyTorch EfficientNetV2-B0 weights to ONNX format.
+    
+    Args:
+        pt_path: Path to .pt weights file
+        onnx_path: Path to save ONNX model
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    import torch
+    import timm
+    
+    try:
+        logger.info(f"Exporting PyTorch model to ONNX: {pt_path} -> {onnx_path}")
+        
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Load model and state dict
+        model = timm.create_model('tf_efficientnetv2_b0', pretrained=False, num_classes=len(LABEL_COLS))
+        state = torch.load(pt_path, map_location=device)
+        
+        if isinstance(state, dict) and "state_dict" in state:
+            state = state["state_dict"]
+        if isinstance(state, dict):
+            state = {(k[7:] if k.startswith("module.") else k): v for k, v in state.items()}
+        
+        model.load_state_dict(state, strict=False)
+        model.eval().to(device)
+        
+        # Create dummy input
+        dummy_input = torch.randn(1, 3, IMG_SIZE, IMG_SIZE, device=device)
+        
+        # Export to ONNX
+        torch.onnx.export(
+            model,
+            dummy_input,
+            onnx_path,
+            input_names=["images"],
+            output_names=["output"],
+            opset_version=14,
+            do_constant_folding=True,
+            dynamic_axes={"images": {0: "batch_size"}},
+            verbose=False,
+        )
+        
+        logger.info(f"✓ ONNX export successful: {onnx_path}")
+        
+        # Verify ONNX model is readable
+        try:
+            import onnx
+            onnx_model = onnx.load(onnx_path)
+            onnx.checker.check_model(onnx_model)
+            logger.info("✓ ONNX model validation passed")
+            return True
+        except ImportError:
+            logger.warning("onnx package not installed, skipping validation")
+            return True
+        except Exception as ex:
+            logger.warning(f"ONNX validation failed: {ex}")
+            return False
+            
+    except Exception as ex:
+        logger.error(f"ONNX export failed: {ex}")
+        return False
+
+
 # ── MLflow logging ─────────────────────────────────────────────────────────────
 
 def log_to_mlflow(weights_path: str, n_train: int, n_val: int) -> str:
+    """
+    Log training artifacts to MLflow.
+    
+    Logs both PyTorch (.pt) and ONNX formats:
+    - .pt for retrain iterations (prefer latest good run)
+    - .onnx for production inference (6x faster)
+    """
     import mlflow
+    from pathlib import Path
 
     if MLFLOW_URI:
         mlflow.set_tracking_uri(MLFLOW_URI)
@@ -327,7 +405,21 @@ def log_to_mlflow(weights_path: str, n_train: int, n_val: int) -> str:
             "trigger":        "drift",
             "rolling_rate":   rolling_rate,
         })
+        
+        # Log PyTorch weights
         mlflow.log_artifact(weights_path, artifact_path="weights")
+        logger.info(f"Logged PyTorch artifact: {weights_path}")
+        
+        # Export and log ONNX model
+        onnx_path = str(Path(weights_path).parent / "effnet_ppe.onnx")
+        if export_to_onnx(weights_path, onnx_path):
+            mlflow.log_artifact(onnx_path, artifact_path="weights")
+            logger.info(f"Logged ONNX artifact: {onnx_path}")
+            mlflow.log_param("export_onnx", "success")
+        else:
+            logger.warning("ONNX export failed, only PyTorch artifact logged")
+            mlflow.log_param("export_onnx", "failed")
+        
         run_id = run.info.run_id
 
     logger.info("retrain: logged to MLflow run_id=%s", run_id)

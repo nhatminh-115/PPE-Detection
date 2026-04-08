@@ -410,6 +410,27 @@ def _classify_siglip_batch(siglip_bundle, frame, boxes, device, pose_results=Non
 def _classify_effnet_batch(effnet_bundle, frame, boxes, device):
     model = effnet_bundle["model"]
     preprocess = effnet_bundle["preprocess"]
+    model_format = effnet_bundle.get("format", "pytorch")  # "pytorch" or "onnx"
+
+    def _run_onnx(session, batch_np: np.ndarray) -> np.ndarray:
+        input_meta = session.get_inputs()[0]
+        input_shape = getattr(input_meta, "shape", None) or []
+        max_batch = None
+        if input_shape and len(input_shape) > 0 and isinstance(input_shape[0], int) and input_shape[0] > 0:
+            max_batch = input_shape[0]
+
+        if max_batch is None or batch_np.shape[0] <= max_batch:
+            outputs = session.run(None, {input_meta.name: batch_np.astype(np.float32)})
+            return np.array(outputs[0], dtype=np.float32)
+
+        # Some exported ONNX models have a fixed batch dimension (often 1).
+        # Run them in smaller chunks so inference does not crash on multi-box frames.
+        collected = []
+        for start in range(0, batch_np.shape[0], max_batch):
+            chunk = batch_np[start:start + max_batch].astype(np.float32)
+            outputs = session.run(None, {input_meta.name: chunk})
+            collected.append(np.array(outputs[0], dtype=np.float32))
+        return np.concatenate(collected, axis=0)
 
     img_h, img_w = frame.shape[:2]
     tensors = []
@@ -445,11 +466,17 @@ def _classify_effnet_batch(effnet_bundle, frame, boxes, device):
     if not tensors:
         return [None] * len(boxes)
 
-    batch = torch.stack(tensors).to(device)
-
-    with torch.no_grad():
-        logits = model(batch)
-        probs = torch.sigmoid(logits).cpu().numpy()
+    if model_format == "onnx":
+        # ONNX runtime expects numpy array
+        batch_np = np.stack([t.numpy() for t in tensors], axis=0)
+        logits = _run_onnx(model, batch_np)
+        probs = 1.0 / (1.0 + np.exp(-logits))  # sigmoid
+    else:
+        # PyTorch format
+        batch = torch.stack(tensors).to(device)
+        with torch.no_grad():
+            logits = model(batch)
+            probs = torch.sigmoid(logits).cpu().numpy()
 
     results = [None] * len(boxes)
     for j, idx in enumerate(valid_idx):

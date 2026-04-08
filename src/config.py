@@ -17,9 +17,25 @@ MLFLOW_RUN_ID        = "b52f0641a3fe41899bb4c620fdef053d"
 MLFLOW_ARTIFACT_PATH = "weights/best.pt"
 MODEL2_PATH          = "yolo26l.pt"
 MODEL_POSE_PATH      = "yolo26m-pose.pt"
-EFFNET_RUN_ID        = "e44391ef94b54ce3b867d46b7ce33ec3"
-EFFNET_ARTIFACT_PATH = "weights/best_stage2_effnet.pt"
-EFFNET_LOCAL_FALLBACK_PATH = "best_stage2_effnet.pt"
+
+# EfficientNetV2-B0 Classifier
+# EFFNET_STABLE_RUN_ID: Verified, production-stable run with ONNX export (always available for fallback)
+# EFFNET_RUN_ID: Latest good retrain run (may be updated after each drift trigger)
+EFFNET_STABLE_RUN_ID = "af05de89dacb4aaf893c68a2e4552ba3"  # Stable, ✓ ONNX available
+EFFNET_RUN_ID        = "af05de89dacb4aaf893c68a2e4552ba3"  # Latest retrain (update after evaluating new runs)
+
+# ONNX format (artifact stored in MLflow run)
+EFFNET_ONNX_ARTIFACT_PATH    = "weights/effnet_ppe.onnx"
+EFFNET_ONNX_LOCAL_FALLBACK   = "model_cache/effnet_ppe.onnx"
+EFFNET_ONNX_INT8_FALLBACK    = "model_cache/effnet_ppe_int8.onnx"
+
+# PyTorch format (retrain result, newer than ONNX)
+EFFNET_PT_ARTIFACT_PATH      = "weights/best_stage2_effnet.pt"
+EFFNET_PT_LOCAL_FALLBACK     = "best_stage2_effnet.pt"
+
+# Loading strategy
+EFFNET_USE_ONNX              = True  # Set to False to force PyTorch
+EFFNET_PREFER_RECENT_PT      = False  # Prefer recent PT retrain over stable ONNX
 
 # ---------------------------------------------------------------------------
 # Detection
