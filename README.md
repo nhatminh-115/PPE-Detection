@@ -272,31 +272,34 @@ https://github.com/user-attachments/assets/56d2bce2-6f40-4413-a22e-83af942a0876
 
 ## 6. Setup Guide
 
-**Quick summary:**
-- **Local:** clone the repo, create `.env`, run `python main.py` or `docker-compose up`.
-- **Production:** provision AWS with Terraform, push the Docker image, then run the container with injected secrets.
+Choose the path that matches your use case:
 
-### Prerequisites
+| Path | Who it's for |
+|---|---|
+| [Path A: Run from source](#path-a-run-from-source) | Developers, researchers, anyone who wants to read or modify the code |
+| [Path B: Deploy without source](#path-b-deploy-without-source) | Ops teams deploying a pre-built image to a server — no code changes needed |
 
-| Tool | Version | Purpose |
-|---|---|---|
-| Docker + Docker Compose | 24.0+ / 2.0+ | Run the inference engine |
-| NVIDIA Container Toolkit | latest | GPU passthrough into Docker |
-| CUDA driver | 12.8+ | GPU inference |
-| Python | 3.11+ | Local scripts |
-| Terraform | 1.10+ | AWS provisioning |
-| AWS CLI | 2.x | AWS authentication |
+Steps 1–5 (external services, Supabase, RAG, AWS, GitHub Actions) are shared by both paths.
 
 ---
 
-### Step 1 — Clone and configure environment
+### Before you begin — required external services
 
-```bash
-git clone https://github.com/nhatminh-115/PPE-Detection.git
-cd PPE-Detection
-```
+Both paths require accounts on the following services. Set these up first and keep the credentials handy for Step 1.
 
-Create a `.env` file in the project root (never commit this file):
+| Service | What you need | Free tier |
+|---|---|---|
+| [Supabase](https://supabase.com) | Project URL, anon key, service role key | Yes |
+| [DagsHub](https://dagshub.com) | MLflow tracking URI, username, token | Yes |
+| [Groq](https://console.groq.com) | API key | Yes |
+| Telegram | Bot token + chat ID (via [@BotFather](https://t.me/BotFather)) | Yes |
+| AWS | Access key + secret key with S3/EC2/IAM permissions | Pay-per-use |
+
+---
+
+### Step 1 — Configure environment variables
+
+Create a `.env` file with your credentials (never commit this file):
 
 ```env
 # Supabase
@@ -343,8 +346,6 @@ This creates all five tables in one step: `ppe_labels`, `ppe_label_audit`, `ppe_
 
 #### Option B: Sequential migrations
 
-If you prefer version-controlled migrations, apply them in order via the Supabase CLI or SQL editor:
-
 ```
 001_ppe_labels.sql             — Core tables: ppe_labels, ppe_label_audit, RLS
 002_ppe_labels_sha256.sql      — Crop deduplication
@@ -374,13 +375,11 @@ SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
 
 ### Step 3 — Build the RAG index (optional)
 
-Skip this step if `data/chroma_db` already exists in the repository. Only run it when the regulation source document changes:
+Skip this step if `data/chroma_db` already exists in the repository or deployment artifact. Only run it when the regulation source document changes:
 
 ```bash
 python rag/ingest.py
 ```
-
-This regenerates `data/chroma_db`, used by the daily compliance report pipeline.
 
 ---
 
@@ -393,8 +392,6 @@ aws configure
 # Enter: Access Key ID, Secret Access Key, region (us-east-1), leave output format blank
 ```
 
-Initialize and apply:
-
 ```bash
 cd terraform
 cp backend.hcl.example backend.hcl
@@ -405,7 +402,7 @@ terraform plan
 terraform apply
 ```
 
-Save the outputs for Step 5:
+Save the outputs — you'll need them in Step 5:
 
 ```bash
 terraform output retrain_launch_template_id
@@ -448,32 +445,38 @@ Go to your GitHub repo → **Settings → Secrets and variables → Actions**.
 
 ---
 
-### Step 6 — Run the inference engine
+### Path A: Run from source
 
-#### Local (no Docker)
+For developers and anyone who wants to read or modify the code.
 
-If Python, CUDA, and dependencies are already installed:
+**Requirements:** Python 3.11+, CUDA 12.8+, an NVIDIA GPU.
 
 ```bash
+git clone https://github.com/nhatminh-115/PPE-Detection.git
+cd PPE-Detection
+# Place your .env file here (from Step 1)
 python main.py
 ```
 
-#### Docker — build locally
+To run via Docker instead (useful for a consistent environment):
 
 ```bash
 docker-compose up --build -d
 docker-compose logs -f ppe_inference_engine
 ```
 
-#### Docker — pre-built image from Docker Hub
+---
+
+### Path B: Deploy without source
+
+For deploying a pre-built image to a server without cloning the repository.
+
+**Requirements:** Docker 24.0+, Docker Compose 2.0+, NVIDIA Container Toolkit, CUDA 12.8+.
 
 ```bash
+# Copy your .env file to the server (from Step 1), then:
 docker pull nhatminh115/ppe_system:latest
 
-# Option A: docker-compose (recommended)
-docker-compose up -d
-
-# Option B: docker run
 docker run -d \
   --gpus all \
   --name ppe_inference \
@@ -485,29 +488,16 @@ docker run -d \
   nhatminh115/ppe_system:latest
 ```
 
-#### Verify the container is running
+Secrets are never baked into the image — Docker reads them from the `.env` file only at container start.
+
+#### Verify
 
 ```bash
 docker ps | grep ppe
 curl http://localhost:8000/api/health
-docker logs -f ppe_inference_engine
-docker exec ppe_inference_engine nvidia-smi
+docker logs -f ppe_inference
+docker exec ppe_inference nvidia-smi
 ```
-
-#### Production deployment
-
-```bash
-# Build and tag
-docker build -t nhatminh115/ppe_system:v1.0.0 .
-docker push nhatminh115/ppe_system:v1.0.0
-
-# On the production server
-cp /secure/path/.env.production .env
-docker pull nhatminh115/ppe_system:v1.0.0
-docker-compose -f docker-compose.prod.yml up -d
-```
-
-Secrets are never baked into the image — Docker reads them from the `.env` file (or an injected environment) only at container start.
 
 #### Troubleshooting
 
@@ -516,7 +506,7 @@ Secrets are never baked into the image — Docker reads them from the `.env` fil
 | CUDA out of memory | Reduce batch size in `src/config.py` or use INT8 quantized ONNX |
 | Image pull fails | Run `docker login` first |
 | GPU not detected | Verify NVIDIA Container Toolkit: `docker run --rm --runtime=nvidia nvidia/cuda:12.8-runtime nvidia-smi` |
-| Port 8000 in use | Change the port: `docker-compose -e PORT=8001 up -d` |
+| Port 8000 in use | Change the host port in the `docker run` command: `-p 8001:8000` |
 
 ---
 
