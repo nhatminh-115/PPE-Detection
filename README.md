@@ -7,13 +7,24 @@
 
 # PPE Detection
 
-PPE Vision is a real-time, cloud-native inference engine for autonomous Personal Protective Equipment (PPE) compliance monitoring. Engineered for high-stakes construction and industrial environments, the system integrates a multi-stage deep learning pipeline with a compliance reporting layer grounded in Vietnamese labor regulations.
+A real-time, cloud-native inference engine for automated Personal Protective Equipment (PPE) compliance monitoring in construction and industrial environments.
 
-The system is designed as a closed-loop flywheel: every violation detected feeds into a human labeling interface, disagreements are auto-surfaced by a vision second-opinion agent, labeled data is versioned to S3, and model drift (triggered from human-confirmed disagreement, with Scout as early warning) automatically triggers EfficientNet retraining on an EC2 Spot Instance.
+The system runs a multi-stage deep learning pipeline that detects violations, sends instant alerts, and generates daily compliance reports grounded in Vietnamese labor regulations (Thong tu 25/2022). It is designed as a closed-loop flywheel: violations feed a human labeling interface, a vision second-opinion agent surfaces disagreements, confirmed labels are versioned to S3, and model drift automatically triggers EfficientNet retraining on an EC2 Spot Instance.
 
 ---
 
-## 1. System Architecture Overview
+## Table of Contents
+
+1. [System Architecture](#1-system-architecture)
+2. [Data Flywheel](#2-data-flywheel)
+3. [Infrastructure](#3-infrastructure)
+4. [Automated Reporting](#4-automated-reporting)
+5. [Model Performance](#5-model-performance)
+6. [Setup Guide](#6-setup-guide)
+
+---
+
+## 1. System Architecture
 
 ![PPE Vision Architecture](docs/PPE_Pipeline_5.png)
 
@@ -21,7 +32,7 @@ The system is designed as a closed-loop flywheel: every violation detected feeds
 |---|---|---|
 | Person Detection | YOLO11s + YOLO26l + WBF | Dual-model ensemble, recall-optimized |
 | Tracking | ByteTrack + Box EMA | Stable ID assignment, spatial smoothing |
-| PPE Classification | SigLIP SO400M / EfficientNetV2-B0 | Zero-shot (large) vs trained (small), routed by box size |
+| PPE Classification | SigLIP SO400M / EfficientNetV2-B0 | Zero-shot (large boxes) vs. trained (small boxes) |
 | Pose Estimation | YOLO26m-pose | Precise head/torso crop localization for SigLIP |
 | State Management | Hysteresis FSM + Classify Lock | Alert fatigue suppression, GPU load reduction |
 | Compliance Reporting | LangGraph + Groq LLM + RAG ChromaDB | Regulation-cited daily reports |
@@ -30,68 +41,58 @@ The system is designed as a closed-loop flywheel: every violation detected feeds
 
 ### 1.1 Core AI Pipeline
 
-**Stage 1: Spatial-Temporal Detection Ensemble**
+**Stage 1: Detection Ensemble**
 
-To mitigate domain shift between varying camera angles (aerial vs. close-circuit), the system implements a dual-YOLO ensemble alongside a dedicated pose estimator:
+The system runs two YOLO detectors in parallel to handle both aerial and close-circuit camera angles:
 
-* **Primary Detector:** YOLO11s fine-tuned on VisDrone for dense, small-scale pedestrian detection.
-* **Secondary Detector:** COCO-pretrained `yolo26l.pt` for high-fidelity close-range detection.
-* **Fusion & Tracking:** Detections are fused via Weighted Boxes Fusion (WBF, weights=[2,1]) to suppress redundant overlaps. ByteTrack assigns stable tracker IDs across frames, coupled with Box EMA (α=0.6) to eliminate spatial jittering.
+- **YOLO11s** — fine-tuned on VisDrone for dense, small-scale pedestrian detection.
+- **YOLO26l** — COCO-pretrained for high-fidelity close-range detection.
+- Detections are fused via **Weighted Boxes Fusion** (WBF, weights=[2,1]) to suppress overlaps, then tracked with **ByteTrack** + Box EMA (α=0.6) for stable IDs and smooth bounding boxes.
 
-**Zone-Based Spatial Filtering**
-
-Before classification, detections are filtered through a user-defined polygon zone. Each person's foot-point (bottom-center of bounding box) is tested via `cv2.pointPolygonTest`. Only persons inside the zone are passed downstream — eliminating irrelevant detections from background areas.
+Before classification, each person's foot-point is tested against a user-defined polygon zone (`cv2.pointPolygonTest`). Only persons inside the zone are passed downstream.
 
 **Stage 2: Classify Lock FSM**
 
-To reduce redundant GPU inference, each tracker follows a three-state lifecycle:
+Each tracker follows a three-state lifecycle to avoid redundant GPU inference:
 
-* **ACTIVE (0-20s):** Classify every detection frame. Requires 3 consecutive stable verdicts before locking.
-* **LOCKED:** Cached verdict is reused. Inference is skipped entirely.
-* **FORCE RECHECK:** Triggered after 20s of lock age, or when verdict confidence drops below threshold.
+- **ACTIVE (0–20s):** Classify every frame; lock after 3 consecutive stable verdicts.
+- **LOCKED:** Cached verdict reused, inference skipped entirely.
+- **FORCE RECHECK:** Triggered after 20s of lock age or when confidence drops below threshold.
 
 **Stage 3: Pose-Guided PPE Classification**
 
 Classification is routed by bounding box size:
 
-* **Small boxes (min side < 110px) → EfficientNetV2-B0:** Full-body crop with 10% padding. Trained on processed Ultralytics PPE dataset (F1=0.92). Runtime prefers ONNX for this branch; if the exported ONNX model has a fixed batch dimension, the worker automatically chunks inputs to keep inference stable.
+- **Small boxes (min side < 110px) → EfficientNetV2-B0:** Full-body crop with 10% padding. Trained on the Ultralytics PPE dataset (F1=0.92). Inference runs via ONNX Runtime; inputs are automatically chunked if the exported model has a fixed batch dimension.
 
-* **Large boxes (min side >= 110px) → SigLIP SO400M:** Zero-shot classification using text prompts. YOLO26m-pose runs every 9 frames to extract COCO keypoints and define precise crop regions:
-  * **Hardhat crop:** Head keypoints (nose, eyes, ears — indices 0-4), pad 45%.
-  * **Vest crop:** Torso keypoints (shoulders, hips — indices 5, 6, 11, 12), pad 25%.
-  * **Fallback:** Fixed-percentage crop (top 42% for head, 20-85% for torso) when pose confidence is insufficient.
+- **Large boxes (min side ≥ 110px) → SigLIP SO400M:** Zero-shot classification using text prompts. YOLO26m-pose runs every 9 frames to extract COCO keypoints and define precise crop regions:
+  - *Hardhat crop:* Head keypoints (indices 0–4), 45% padding.
+  - *Vest crop:* Torso keypoints (indices 5, 6, 11, 12), 25% padding.
+  - *Fallback:* Fixed-percentage crop when pose confidence is insufficient.
 
-  After SigLIP inference, **HSV Color Priors** post-process the hardhat probability:
-  * White pixel ratio (S<=58, V>=148) in head ROI → +0.12 boost
-  * Bright pixel ratio (white or yellow) → +0.10 boost
-  * Dark pixel ratio (V<=72, ratio>=22%) → -0.14 penalty
+  HSV Color Priors post-process the hardhat probability: white/yellow pixels in the head ROI add a boost (+0.10–0.12), dark pixels apply a penalty (−0.14).
 
-**HuggingFace Spaces demo:** [![HuggingFace Spaces](https://img.shields.io/badge/-Live%20Demo-yellow)](https://huggingface.co/spaces/Nhatminh1234/ppe-classifier)
+[![HuggingFace Spaces](https://img.shields.io/badge/-Live%20Demo-yellow)](https://huggingface.co/spaces/Nhatminh1234/ppe-classifier) — Try the PPE classifier online.
 
-### 1.2 State Management & Observability
+### 1.2 State Management & Alerting
 
-* **Hysteresis FSM:** Controls SAFE → WARN → VIOLATION transitions with strict margins to prevent oscillation. EMA smoothing (α=0.5) is applied to raw classification probabilities before state evaluation.
+- **Hysteresis FSM:** Controls SAFE → WARN → VIOLATION transitions with strict margins to prevent oscillation. EMA smoothing (α=0.5) is applied to raw probabilities before state evaluation.
 
-* **Per-Item Temporal Accumulation:** Each PPE item (hardhat, vest) maintains an independent 3-second accumulation timer. A timer increments only while that specific item is in the VIOLATION state (state=0), and resets to zero the moment the item recovers.
+- **Per-Item Accumulation:** Each PPE item (hardhat, vest) maintains an independent 3-second accumulation timer that only increments while that item is in VIOLATION state, and resets on recovery.
 
-* **Per-Item Violation Cooldown:** A 5-minute cooldown is tracked independently per PPE item per camera session. Cooldown state is keyed by `(session_id, tracker_id)` to enforce strict cross-camera isolation.
+- **Per-Item Cooldown:** A 5-minute cooldown is tracked per item per camera session, keyed by `(session_id, tracker_id)`. Full recovery (all items back to state=2) clears all cooldowns for that tracker; partial recovery does not.
 
-  Recovery semantics are strict by design:
-  * **Full recovery** (all PPE items back to state=2, green) clears all per-item cooldowns for that tracker.
-  * **Partial recovery** (e.g. vest restored, hardhat still missing) does NOT reset the hardhat cooldown.
-  * **WARN state** (state=1) is explicitly not a recovery condition.
+- **Violation Logging:** Events are written asynchronously to Supabase PostgreSQL with a JSONB schema and a localized crop image.
 
-* **Idempotent Event Logging:** Violations are logged asynchronously (Fire-and-Forget ThreadPool) to Supabase PostgreSQL with a JSONB schema, alongside a localized crop image for manual auditing.
-
-* **Instant Telegram Alert:** Each confirmed violation dispatches a Telegram notification with the crop image attached, in parallel with the Supabase insert.
+- **Instant Telegram Alert:** Each confirmed violation dispatches a Telegram notification with the crop image, in parallel with the Supabase insert.
 
 ### 1.3 Multi-Camera Architecture
 
-* Each camera is registered dynamically via **CameraRegistry** and assigned a unique `cam_id` and `session_id`.
-* Every camera spawns a dedicated **inference thread** with isolated tracker, EMA, FSM, and classify lock state.
-* A **producer-consumer pipeline** decouples frame I/O from GPU inference via bounded queues.
-* Streams are served at `/video_feed/{cam_id}` and composited into a responsive grid in the UI.
-* **Zone polygons** are stored per-camera and persist across stream restarts.
+- Cameras are registered via **CameraRegistry**, each assigned a unique `cam_id` and `session_id`.
+- Each camera runs a dedicated **inference thread** with isolated tracker, EMA, FSM, and classify lock state.
+- A **producer-consumer pipeline** decouples frame I/O from GPU inference via bounded queues.
+- Streams are served at `/video_feed/{cam_id}` and composited into a responsive grid.
+- Zone polygons are stored per-camera and persist across restarts.
 
 ---
 
@@ -101,28 +102,26 @@ The system implements a closed-loop retraining pipeline that continuously improv
 
 ```
 Violations (Supabase)
-        └── Second Opinion Agent (Groq Scout, skip already-labeled events)
-          └── Human Labeling (Label Studio UI)
-            └── S3 Export (human-confirmed only)
-              └── Drift Monitor
-            ├── Scout disagreement (observability)
-            └── Human-confirmed disagreement (retrain trigger)
-              └── EC2 Spot Retrain (EfficientNet fine-tune → MLflow)
+  └── Second Opinion Agent (Groq Scout — skips already-labeled events)
+    └── Human Labeling (Label Studio UI)
+      └── S3 Export (human-confirmed only)
+        └── Drift Monitor
+          ├── Scout disagreement (early-warning observability)
+          └── Human-confirmed disagreement (retrain trigger)
+            └── EC2 Spot Retrain (EfficientNet fine-tune → MLflow)
 ```
 
 ### 2.1 Vision Second Opinion Agent
 
-A Groq vision agent (Llama 4 Scout) runs nightly on uncertain violation events. It skips events that already have labels (human or auto), and auto-labels remaining events as `has-fp`, `has-fn`, or `all-correct` — writing to `ppe_labels` with `is_auto_labeled=True`. Disagreements surface as pre-labeled cards in Label Studio for human review and become high-value retraining candidates.
-
+A Groq vision agent (Llama 4 Scout) runs nightly on uncertain violation events. It skips events already labeled (human or auto), and auto-labels remaining events as `has-fp`, `has-fn`, or `all-correct` — writing to `ppe_labels` with `is_auto_labeled=True`. Disagreements surface as pre-labeled cards in Label Studio for human review and become high-value retraining candidates.
 
 ### 2.2 Human-in-the-Loop Labeling
 
-The Label Studio tab in the dashboard surfaces merged violation events (keyed by `session_id:tracker_id`) as label cards. Annotators confirm or reject model predictions; verdicts are derived server-side as TP/FP/FN/TN per PPE item. Crops are upscaled with Real-ESRGAN x4 (74ms/crop, +38% sharpness recovery) before storage.
-
+The Label Studio tab surfaces merged violation events (keyed by `session_id:tracker_id`) as label cards. Annotators confirm or reject model predictions; verdicts are derived server-side as TP/FP/FN/TN per PPE item. Crops are upscaled with Real-ESRGAN x4 (74ms/crop, +38% sharpness recovery) before storage.
 
 ### 2.3 S3 Dataset Versioning
 
-Confirmed human labels and their crops are exported to S3 daily:
+Confirmed human labels and crops are exported to S3 daily:
 
 ```
 ppe-flywheel/
@@ -133,18 +132,18 @@ ppe-flywheel/
 
 ### 2.4 Drift Monitor & Retrain Trigger
 
-The monitor computes two daily disagreement signals:
+Two daily disagreement signals are computed:
 
 ```
-scout_disagreement_rate = (has-fp + has-fn on Scout auto-labels) / total Scout auto-labels
-human_disagreement_rate = (has-fp + has-fn on human-confirmed labels) / total confirmed human labels
+scout_disagreement_rate  = (has-fp + has-fn on Scout labels) / total Scout labels
+human_disagreement_rate  = (has-fp + has-fn on human labels) / total human labels
 ```
 
-Retrain trigger uses **human-confirmed disagreement** as canonical signal:
-- 7-day rolling average `human_disagreement_rate > DRIFT_THRESHOLD` (default 0.25)
+Retrain is triggered when both conditions are met:
+- 7-day rolling `human_disagreement_rate > DRIFT_THRESHOLD` (default 0.25)
 - Total confirmed human labels `>= MIN_CONFIRMED_SAMPLES` (default 100)
 
-Scout disagreement is still tracked as an early-warning observability metric. Results are logged to `drift_log`. When triggered, a GitHub Actions workflow launches an EC2 Spot Instance (t3.medium) that runs `training/retrain_effnet.py`, exports both `weights/best_flywheel_effnet.pt` and `weights/effnet_ppe.onnx`, and self-terminates on completion.
+Scout disagreement is tracked separately as an early-warning metric. When triggered, a GitHub Actions workflow launches an EC2 Spot Instance (t3.medium) that runs `training/retrain_effnet.py`, exports `weights/best_flywheel_effnet.pt` and `weights/effnet_ppe.onnx`, and self-terminates.
 
 ---
 
@@ -161,88 +160,86 @@ All AWS resources are defined in `terraform/` and provisioned via Terraform >= 1
 | IAM Role | Instance profile with S3 read/write and self-terminate permissions |
 | Security Group | Outbound-only (Docker pull, S3, MLflow, Supabase) |
 
-Remote state is stored in the same S3 bucket at `terraform/state/terraform.tfstate` with native S3 locking (no DynamoDB required, Terraform 1.10+).
+Remote state is stored in the same S3 bucket at `terraform/state/terraform.tfstate` using native S3 locking (no DynamoDB required — Terraform 1.10+).
 
-### 3.2 CI/CD
+### 3.2 CI/CD Workflows
 
 | Workflow | Trigger | Action |
 |---|---|---|
-| `ci-cd-pipeline.yml` | Push to main | Run pytest, build and push Docker image to Docker Hub |
-| `daily_report.yml` | 23:00 ICT daily | Second opinion → LangGraph report → S3 export → drift monitor → cleanup → Telegram |
+| `ci-cd-pipeline.yml` | Push to `main` | Run pytest, build and push Docker image to Docker Hub |
+| `daily_report.yml` | 23:00 ICT daily | Second opinion → LangGraph report → S3 export → drift monitor → Telegram |
 | `retrain_trigger.yml` | 23:30 ICT daily | Check drift signal → launch EC2 Spot Instance if triggered |
 | `terraform.yml` | Push/PR on `terraform/**` | Terraform plan (PR) / apply (main) |
 
 ### 3.3 Artifact Registry
 
-* **Docker:** Docker Hub (`nhatminh115/ppe_system:latest`)
-* **Model weights:** MLflow on DagsHub ([tracking URI](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow)) with stable ONNX artifact at `weights/effnet_ppe.onnx`
-* **Dataset:** S3 (`ppe-flywheel/ppe-flywheel/`)
+| Artifact | Location |
+|---|---|
+| Docker image | Docker Hub — `nhatminh115/ppe_system:latest` |
+| Model weights | MLflow on DagsHub — stable ONNX at `weights/effnet_ppe.onnx` |
+| Dataset | S3 — `ppe-flywheel/ppe-flywheel/` |
 
 ---
 
-## 4. Automated Reporting & Compliance Intelligence
+## 4. Automated Reporting
 
-An automated reporting pipeline runs daily at 23:00 ICT via GitHub Actions cron.
+A reporting pipeline runs daily at 23:00 ICT via GitHub Actions.
 
-**Pipeline:** Pull violation logs → Second Opinion Agent → RAG lookup on Thong tu 25/2022 → Groq LLM narrative → S3 export → Drift monitor → cleanup → Telegram + Supabase.
+**Pipeline:** Pull violation logs → Second Opinion Agent → RAG lookup on Thong tu 25/2022 → Groq LLM narrative → S3 export → drift monitor → Telegram + Supabase.
 
-**RAG Layer:** The knowledge base indexes 229 pages of Thong tu 25/2022/TT-BLDTBXH (428 chunks) into ChromaDB using `paraphrase-multilingual-MiniLM-L12-v2` embeddings. Violation types detected automatically generate Vietnamese queries, retrieve top-k regulation chunks, and inject them as grounded context into the Groq prompt.
-
-**Result:** Daily reports cite specific Dieu numbers and Phu luc I page entries rather than generic safety advice.
+**RAG Layer:** The knowledge base indexes 229 pages of Thong tu 25/2022/TT-BLDTBXH (428 chunks) into ChromaDB using `paraphrase-multilingual-MiniLM-L12-v2` embeddings. Detected violation types generate Vietnamese queries, retrieve top-k regulation chunks, and inject them as grounded context into the Groq prompt — so reports cite specific Dieu numbers and Phu luc I page entries rather than generic safety advice.
 
 | Component | Technology |
 |---|---|
 | LLM | Groq API (Llama 3.3 70B) |
 | Orchestration | LangGraph 4-agent pipeline |
-| Vector Store | ChromaDB (persistent, cosine) |
+| Vector Store | ChromaDB (persistent, cosine similarity) |
 | Embedding Model | paraphrase-multilingual-MiniLM-L12 |
-| Scheduler | GitHub Actions cron (16:00 UTC) |
 | Notification | Telegram Bot API |
 | Storage | Supabase `daily_reports` table |
 
 **Daily Report (Supabase):**
 ![Daily Report Supabase](docs/Daily_report_supabase.png)
 
-**Telegram Report:**
-![Telegram Report1](docs/Telegram_report.png)
-![Telegram Report2](docs/Telegram_Instant_Alert.png)
-
+**Telegram Notifications:**
+![Telegram Report](docs/Telegram_report.png)
+![Telegram Instant Alert](docs/Telegram_Instant_Alert.png)
 
 ---
 
 ## 5. Model Performance
 
-### Stage 1: Detection Ensemble (VisDrone val set, 548 images)
+### Detection Ensemble (VisDrone val set, 548 images)
 
 | Model | Precision | Recall | mAP@50 | FPS |
 |---|---|---|---|---|
 | YOLO11s (fine-tuned) | 0.760 | 0.611 | 0.684 | 45.8 |
 | YOLO26l (pretrained) | 0.590 | 0.356 | 0.418 | 22.3 |
-| **WBF Ensemble** | **0.556** | **0.764** | - | ~18* |
+| **WBF Ensemble** | **0.556** | **0.764** | — | ~18* |
 
 *End-to-end throughput with pose model (POSE_EVERY=9) on NVIDIA RTX 5070.
 
-> Ensemble rationale: Higher recall (0.764 vs 0.611) prioritizes zero missed violations. Residual false positives are suppressed downstream by the classification stage.
+> The ensemble trades precision for recall (0.764 vs 0.611) to ensure zero missed violations. Residual false positives are suppressed downstream by the classification stage.
 
-### Stage 2: PPE Classifier (Ultralytics PPE dataset)
+### PPE Classifier (Ultralytics PPE dataset)
 
 | Model | Precision | Recall | F1 | Notes |
 |---|---|---|---|---|
 | EfficientNetV2-B0 | 0.97 | 0.88 | 0.92 | Trained, handles small boxes |
-| SigLIP SO400M | - | - | - | Zero-shot, handles large boxes |
+| SigLIP SO400M | — | — | — | Zero-shot, handles large boxes |
 
-### ONNX Export (EfficientNetV2-B0, CPU deployment)
+### ONNX Export (EfficientNetV2-B0, CPU)
 
 | Format | Latency | Throughput | Size |
 |---|---|---|---|
 | PyTorch (CPU) | ~45 ms | ~22 FPS | 22.4 MB |
 | ONNX FP32 (CPU) | 7.46 ms | 134 FPS | 22.4 MB |
 
-> ~6x speedup via ONNX Runtime graph optimization. Stable ONNX artifact: [MLflow Run](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow) → run `af05de89dacb4aaf893c68a2e4552ba3`.
+> ~6x speedup via ONNX Runtime graph optimization. Stable artifact: [MLflow Run](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow) → run `af05de89dacb4aaf893c68a2e4552ba3`.
 
 ### LLM Report Quality
 
-Evaluated across 10 synthetic violation scenarios via LLM-as-judge (Gemini 3.1 Pro).
+Evaluated across 10 synthetic violation scenarios (LLM-as-judge, Gemini 3.1 Pro):
 
 | Criterion | Score |
 |---|---|
@@ -253,60 +250,53 @@ Evaluated across 10 synthetic violation scenarios via LLM-as-judge (Gemini 3.1 P
 | Conciseness | 5.0 / 5 |
 | **Overall** | **4.8 / 5** |
 
-**EfficientNet Training Metrics**
-![EfficientNet Metrics](docs/EfficientNet_metrics.png)
+**Training Metrics**
 
-**YOLO11s Training Metrics**
+![EfficientNet Metrics](docs/EfficientNet_metrics.png)
 ![YOLO11s Metrics](docs/Yolo11s_metrics.png)
 
-**Supabase Database**
-![Supabase1](docs/Supabase.png)
-![Supabase2](docs/Supabase_Storage.png)
+**Database & UI**
 
-**User Interface**
-![UI 1](docs/UI_1.png)
-![UI 2](docs/UI_2.png)
-![UI 3](docs/Violation_Log.png)
-![UI 2](docs/Label_Studio.png)
-
-
+![Supabase](docs/Supabase.png)
+![Supabase Storage](docs/Supabase_Storage.png)
+![UI Dashboard](docs/UI_1.png)
+![UI Stream](docs/UI_2.png)
+![Violation Log](docs/Violation_Log.png)
+![Label Studio](docs/Label_Studio.png)
 
 **Video Demo**
 
-
-
 https://github.com/user-attachments/assets/56d2bce2-6f40-4413-a22e-83af942a0876
-
 
 ---
 
 ## 6. Setup Guide
 
-Short version:
-- Local development: clone the repo, create `.env`, then run `python main.py` or `docker-compose up`.
-- Production: provision AWS with Terraform, build/push the image to Docker Hub, and run the container on the target host with injected secrets.
+**Quick summary:**
+- **Local:** clone the repo, create `.env`, run `python main.py` or `docker-compose up`.
+- **Production:** provision AWS with Terraform, push the Docker image, then run the container with injected secrets.
 
 ### Prerequisites
 
 | Tool | Version | Purpose |
 |---|---|---|
-| Docker + Docker Compose | 24.0+ | Run inference engine |
-| NVIDIA Container Toolkit | latest | GPU passthrough |
+| Docker + Docker Compose | 24.0+ / 2.0+ | Run the inference engine |
+| NVIDIA Container Toolkit | latest | GPU passthrough into Docker |
 | CUDA driver | 12.8+ | GPU inference |
 | Python | 3.11+ | Local scripts |
 | Terraform | 1.10+ | AWS provisioning |
 | AWS CLI | 2.x | AWS authentication |
 
-### Step 1 — Local Development
+---
 
-If you are running the app on your own machine:
+### Step 1 — Clone and configure environment
 
 ```bash
 git clone https://github.com/nhatminh-115/PPE-Detection.git
 cd PPE-Detection
 ```
 
-Create a local `.env` file in the project root and keep it out of git:
+Create a `.env` file in the project root (never commit this file):
 
 ```env
 # Supabase
@@ -339,107 +329,68 @@ MUTE_THIRD_PARTY_STARTUP_LOGS=1
 QUIET_GET_ACCESS_LOGS=1
 ```
 
-#### Production Deployment
+---
 
-For production, keep secrets outside the repo. Put them in a file on the server, then let Docker read that file when it starts.
+### Step 2 — Set up the Supabase database
 
-Minimum env groups:
+#### Option A: Consolidated schema (recommended)
 
-```env
-# Required runtime
-SUPABASE_URL=...
-SUPABASE_KEY=...
-SUPABASE_SERVICE_KEY=...
-MLFLOW_TRACKING_URI=...
-GROQ_API_KEY=...
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_CHAT_ID=...
+1. Open your Supabase project → **SQL Editor** → **New query**.
+2. Paste the contents of [`supabase/consolidated_schema.sql`](supabase/consolidated_schema.sql).
+3. Run the query.
 
-# Flywheel / retrain
-S3_BUCKET=...
-S3_PREFIX=ppe-flywheel
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_DEFAULT_REGION=us-east-1
+This creates all five tables in one step: `ppe_labels`, `ppe_label_audit`, `ppe_violations`, `daily_reports`, `drift_log`.
 
-# Optional feature flags
-REPORT_USE_LANGGRAPH=1
-SECOND_OPINION_THRESHOLD=1.0
-CLEANUP_SECRET=...
-MUTE_THIRD_PARTY_STARTUP_LOGS=1
-QUIET_GET_ACCESS_LOGS=1
+#### Option B: Sequential migrations
+
+If you prefer version-controlled migrations, apply them in order via the Supabase CLI or SQL editor:
+
 ```
-
-### Step 2 — Supabase Database Setup
-
-#### Option A: Quick Setup (Consolidated Schema)
-
-For fastest setup, load the consolidated schema file containing all tables, indexes, and RLS policies:
-
-1. Open Supabase dashboard → `SQL` editor
-2. Create a new query and paste the contents of [`supabase/consolidated_schema.sql`](supabase/consolidated_schema.sql)
-3. Execute the query
-
-This creates 5 tables in one step:
-- `ppe_labels`: Current annotation state
-- `ppe_label_audit`: Immutable change log
-- `ppe_violations`: Raw detection events
-- `daily_reports`: End-of-day compliance snapshots
-- `drift_log`: Model drift tracking for retrain triggers
-
-#### Option B: Version-Controlled Migrations
-
-For version control (e.g., with `supabase` CLI), apply migrations sequentially:
+001_ppe_labels.sql             — Core tables: ppe_labels, ppe_label_audit, RLS
+002_ppe_labels_sha256.sql      — Crop deduplication
+003_daily_reports_phase2.sql   — Quality metrics & systemic flags
+004_ppe_labels_auto.sql        — Auto-labeled rows (Scout)
+005_drift_log.sql              — Drift monitoring table
+006_ppe_labels_expire.sql      — Retention policy columns
+007_drift_log_human_signal.sql — Human vs Scout disagreement signals
+```
 
 ```bash
 supabase migration up
-# OR manually in Supabase SQL editor, run in order:
-# 001_ppe_labels.sql           — Core tables: ppe_labels, ppe_label_audit, RLS
-# 002_ppe_labels_sha256.sql    — Add crop deduplication
-# 003_daily_reports_phase2.sql — Add quality metrics & systemic flags
-# 004_ppe_labels_auto.sql      — Mark auto-labeled rows (Scout)
-# 005_drift_log.sql            — Drift monitoring table
-# 006_ppe_labels_expire.sql    — Retention policy columns
-# 007_drift_log_human_signal.sql — Human vs Scout disagreement signals
 ```
 
-#### Create Storage Bucket
+#### Create the storage bucket
 
-In Supabase Storage:
-1. Click **New bucket**
-2. Name: `ppe-crops`
-3. Make it **Public** (RLS will restrict access server-side)
-4. Create
+In **Supabase Storage**: create a new bucket named `ppe-crops` and set it to **Public** (server-side RLS restricts access).
 
-#### Verify Schema
-
-Check that tables exist:
+#### Verify
 
 ```sql
 SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
+-- Expected: daily_reports, drift_log, ppe_label_audit, ppe_labels, ppe_violations
 ```
 
-Expected tables: `daily_reports`, `drift_log`, `ppe_label_audit`, `ppe_labels`, `ppe_violations`
+---
 
-### Step 3 — RAG Index (Optional Regeneration)
+### Step 3 — Build the RAG index (optional)
 
-If `data/chroma_db` is already present in the repository or in your deployment artifact, you can skip this step.
-
-Only run this when the regulation source changes and you need to rebuild the vector store:
+Skip this step if `data/chroma_db` already exists in the repository. Only run it when the regulation source document changes:
 
 ```bash
 python rag/ingest.py
 ```
 
-This regenerates `data/chroma_db`, which is used by the daily regulation-cited report pipeline.
+This regenerates `data/chroma_db`, used by the daily compliance report pipeline.
 
-### Step 4 — Provision AWS infrastructure (Terraform)
+---
 
-Install Terraform >= 1.10 from [developer.hashicorp.com/terraform/install](https://developer.hashicorp.com/terraform/install) and configure AWS CLI:
+### Step 4 — Provision AWS infrastructure
+
+Install [Terraform >= 1.10](https://developer.hashicorp.com/terraform/install), then authenticate with AWS:
 
 ```bash
 aws configure
-# Enter your AWS Access Key ID, Secret Access Key, region (us-east-1), leave output blank
+# Enter: Access Key ID, Secret Access Key, region (us-east-1), leave output format blank
 ```
 
 Initialize and apply:
@@ -447,24 +398,27 @@ Initialize and apply:
 ```bash
 cd terraform
 cp backend.hcl.example backend.hcl
-# Edit backend.hcl: set bucket (your S3 bucket name) and region
+# Edit backend.hcl: set your S3 bucket name and region
+
 terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 ```
 
-After apply, note the outputs:
+Save the outputs for Step 5:
 
 ```bash
 terraform output retrain_launch_template_id
 terraform output retrain_subnet_id
 ```
 
-### Step 5 — Configure GitHub Actions secrets and variables
+---
 
-In your GitHub repo → **Settings → Secrets and variables → Actions**:
+### Step 5 — Configure GitHub Actions
 
-**Secrets** (sensitive values):
+Go to your GitHub repo → **Settings → Secrets and variables → Actions**.
+
+**Secrets:**
 
 | Secret | Description |
 |---|---|
@@ -483,52 +437,43 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 | `DOCKERHUB_USERNAME` | Docker Hub username |
 | `DOCKERHUB_TOKEN` | Docker Hub access token |
 
-**Variables** (non-sensitive):
+**Variables:**
 
-| Variable | Description | Default |
+| Variable | Default | Description |
 |---|---|---|
-| `AWS_DEFAULT_REGION` | AWS region | `us-east-1` |
-| `S3_PREFIX` | S3 key prefix | `ppe-flywheel` |
-| `RETRAIN_LAUNCH_TEMPLATE_ID` | From `terraform output` | - |
-| `RETRAIN_SUBNET_ID` | From `terraform output` | - |
+| `AWS_DEFAULT_REGION` | `us-east-1` | AWS region |
+| `S3_PREFIX` | `ppe-flywheel` | S3 key prefix |
+| `RETRAIN_LAUNCH_TEMPLATE_ID` | — | From `terraform output` |
+| `RETRAIN_SUBNET_ID` | — | From `terraform output` |
 
-### Step 6 — Run the Inference Engine
+---
 
-#### Local Development
+### Step 6 — Run the inference engine
 
-If Python, CUDA, and dependencies are already installed, run this:
+#### Local (no Docker)
+
+If Python, CUDA, and dependencies are already installed:
 
 ```bash
 python main.py
 ```
 
-Use this for quick testing on your own machine.
-
-#### Option A: Build & Run Locally
+#### Docker — build locally
 
 ```bash
-# Build Docker image with GPU support
 docker-compose up --build -d
-
-# View logs
 docker-compose logs -f ppe_inference_engine
 ```
 
-#### Option B: Docker Hub Pre-built Image
-
-Pull the pre-built image from Docker Hub (faster):
+#### Docker — pre-built image from Docker Hub
 
 ```bash
-# Login to Docker Hub (optional, for private images)
-docker login
-
-# Pull latest image
 docker pull nhatminh115/ppe_system:latest
 
-# Run with docker-compose
+# Option A: docker-compose (recommended)
 docker-compose up -d
 
-# Or run directly
+# Option B: docker run
 docker run -d \
   --gpus all \
   --name ppe_inference \
@@ -540,110 +485,74 @@ docker run -d \
   nhatminh115/ppe_system:latest
 ```
 
-#### Verify Container
+#### Verify the container is running
 
 ```bash
-# Check running containers
 docker ps | grep ppe
-
-# Test API health
 curl http://localhost:8000/api/health
-
-# View logs
-docker logs -f ppe_inference_engine  # or ppe_inference (if run directly)
-
-# Check GPU usage inside container
+docker logs -f ppe_inference_engine
 docker exec ppe_inference_engine nvidia-smi
 ```
 
-#### Environment Requirements
-
-**GPU:** NVIDIA GPU with CUDA 12.8+
-- Check: `nvidia-smi`
-- Install NVIDIA Container Toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
-
-**Docker:** 24.0+
-- Check: `docker --version`
-
-**Docker Compose:** 2.0+
-- Check: `docker-compose --version`
-
-#### Production Deployment
-
-Production deploy is:
-
-1. Build the Docker image.
-2. Push it to Docker Hub.
-3. Copy the production env file to the server.
-4. Pull the image on the server.
-5. Start the container.
+#### Production deployment
 
 ```bash
 # Build and tag
 docker build -t nhatminh115/ppe_system:v1.0.0 .
-
-# Push to Docker Hub
 docker push nhatminh115/ppe_system:v1.0.0
 
-# On production machine, pull and run
+# On the production server
+cp /secure/path/.env.production .env
 docker pull nhatminh115/ppe_system:v1.0.0
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
-How env injection works:
-
-```bash
-# On the server, keep secrets in a file like this
-cp /secure/path/.env.production .env
-docker compose up -d
-```
-
-If you use GitHub Actions, AWS SSM, or another secret store, it can create that file or pass the values directly. The important part is: the secrets stay outside the image, and Docker reads them only when the container starts.
+Secrets are never baked into the image — Docker reads them from the `.env` file (or an injected environment) only at container start.
 
 #### Troubleshooting
 
-| Issue | Solution |
+| Symptom | Fix |
 |---|---|
 | CUDA out of memory | Reduce batch size in `src/config.py` or use INT8 quantized ONNX |
-| Image pull fails | Ensure Docker Hub login: `docker login` |
+| Image pull fails | Run `docker login` first |
 | GPU not detected | Verify NVIDIA Container Toolkit: `docker run --rm --runtime=nvidia nvidia/cuda:12.8-runtime nvidia-smi` |
-| Port 8000 already in use | Change port: `docker-compose -e PORT=8001 up -d` |
+| Port 8000 in use | Change the port: `docker-compose -e PORT=8001 up -d` |
+
+---
 
 ### Step 7 — Access the dashboard
 
+Open `http://localhost:8000/` in your browser.
+
 | Endpoint | Description |
 |---|---|
-| `http://localhost:8000/` | Main dashboard |
-| `http://localhost:8000/video_feed/{cam_id}` | Per-camera stream |
-| `http://localhost:8000/api/violations` | Audit log |
-| `http://localhost:8000/api/labels` | Label store |
-| `http://localhost:8000/api/second_opinion/run?date=YYYY-MM-DD` | Trigger second opinion |
-| `http://localhost:8000/api/report/generate?date=YYYY-MM-DD` | Trigger report |
-| `http://localhost:8000/api/cameras` | Camera registry |
+| `/` | Main dashboard |
+| `/video_feed/{cam_id}` | Per-camera live stream |
+| `/api/violations` | Violation audit log |
+| `/api/labels` | Label store |
+| `/api/cameras` | Camera registry |
+| `/api/second_opinion/run?date=YYYY-MM-DD` | Trigger second opinion agent |
+| `/api/report/generate?date=YYYY-MM-DD` | Trigger daily report |
 
-### Multi-Camera Setup
+#### Adding cameras
 
 ```bash
-# Add cameras via API
+# Add a webcam
 curl -X POST "http://localhost:8000/api/cameras/add_webcam?camera_index=0&label=Zone+A"
+
+# Add an RTSP stream
 curl -X POST "http://localhost:8000/api/cameras/add_rtsp?url=rtsp://...&label=Gate+Camera"
 
 # List active cameras
 curl "http://localhost:8000/api/cameras"
 ```
 
-Or use the dashboard: **Add** → select Webcam or RTSP → assign label.
+Or use the dashboard: click **Add** → select Webcam or RTSP → assign a label.
 
-### Zone Definition
+#### Defining a detection zone
 
 1. Add a camera and start the stream.
 2. Hover over a camera cell → click **+ ZONE**.
 3. The stream pauses on a frozen frame.
-4. Click to place polygon vertices; click the first point to close.
+4. Click to place polygon vertices; click the first point to close the polygon.
 5. Click **Save Zone** — inference resumes and only persons within the zone are checked.
-
----
-
-## 7. Related Work
-
-* **[Cali Housing MLOps: From Manual to GitOps Architecture](https://github.com/nhatminh-115/cali-housing-mlops)** — IaC and GitOps pipelines (Terraform, AWS EC2, closed-loop CT) forming the foundation for the infrastructure layer above.
