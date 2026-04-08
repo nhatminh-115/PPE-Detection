@@ -8,7 +8,10 @@ import open_clip
 import timm
 import concurrent.futures
 import numpy as np
-import onnxruntime as ort
+try:
+    import onnxruntime as ort
+except ImportError:
+    ort = None
 from torchvision import transforms
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -320,6 +323,10 @@ def _load_effnet_bundle():
 
 def _load_effnet_onnx_local():
     """Load ONNX from local cache (no remote pull)."""
+    if ort is None:
+        logger.warning("onnxruntime is not installed; skipping ONNX local load")
+        return None
+
     for path in [EFFNET_ONNX_LOCAL_FALLBACK, EFFNET_ONNX_INT8_FALLBACK]:
         if path and os.path.exists(path):
             try:
@@ -342,6 +349,10 @@ def _load_effnet_onnx_local():
 
 def _load_effnet_onnx_from_run(run_id: str):
     """Load ONNX from specific MLflow run (with remote pull)."""
+    if ort is None:
+        logger.warning("onnxruntime is not installed; skipping ONNX MLflow load")
+        return None
+
     try:
         onnx_mlflow_path = pull_artifact_from_mlflow_run(
             run_id=run_id,

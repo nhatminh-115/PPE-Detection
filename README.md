@@ -282,6 +282,10 @@ https://github.com/user-attachments/assets/56d2bce2-6f40-4413-a22e-83af942a0876
 
 ## 6. Setup Guide
 
+Short version:
+- Local development: clone the repo, create `.env`, then run `python main.py` or `docker-compose up`.
+- Production: provision AWS with Terraform, build/push the image to Docker Hub, and run the container on the target host with injected secrets.
+
 ### Prerequisites
 
 | Tool | Version | Purpose |
@@ -293,14 +297,16 @@ https://github.com/user-attachments/assets/56d2bce2-6f40-4413-a22e-83af942a0876
 | Terraform | 1.10+ | AWS provisioning |
 | AWS CLI | 2.x | AWS authentication |
 
-### Step 1 — Clone & configure environment
+### Step 1 — Local Development
+
+If you are running the app on your own machine:
 
 ```bash
 git clone https://github.com/nhatminh-115/PPE-Detection.git
 cd PPE-Detection
 ```
 
-Create a `.env` file (copy from `.env.example` if available):
+Create a local `.env` file in the project root and keep it out of git:
 
 ```env
 # Supabase
@@ -329,6 +335,37 @@ AWS_DEFAULT_REGION=us-east-1
 REPORT_USE_LANGGRAPH=1
 SECOND_OPINION_THRESHOLD=1.0
 CLEANUP_SECRET=your_random_cleanup_secret
+MUTE_THIRD_PARTY_STARTUP_LOGS=1
+QUIET_GET_ACCESS_LOGS=1
+```
+
+#### Production Deployment
+
+For production, keep secrets outside the repo. Put them in a file on the server, then let Docker read that file when it starts.
+
+Minimum env groups:
+
+```env
+# Required runtime
+SUPABASE_URL=...
+SUPABASE_KEY=...
+SUPABASE_SERVICE_KEY=...
+MLFLOW_TRACKING_URI=...
+GROQ_API_KEY=...
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+
+# Flywheel / retrain
+S3_BUCKET=...
+S3_PREFIX=ppe-flywheel
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_DEFAULT_REGION=us-east-1
+
+# Optional feature flags
+REPORT_USE_LANGGRAPH=1
+SECOND_OPINION_THRESHOLD=1.0
+CLEANUP_SECRET=...
 MUTE_THIRD_PARTY_STARTUP_LOGS=1
 QUIET_GET_ACCESS_LOGS=1
 ```
@@ -457,6 +494,16 @@ In your GitHub repo → **Settings → Secrets and variables → Actions**:
 
 ### Step 6 — Run the Inference Engine
 
+#### Local Development
+
+If Python, CUDA, and dependencies are already installed, run this:
+
+```bash
+python main.py
+```
+
+Use this for quick testing on your own machine.
+
 #### Option A: Build & Run Locally
 
 ```bash
@@ -523,7 +570,13 @@ docker exec ppe_inference_engine nvidia-smi
 
 #### Production Deployment
 
-For production, use a container registry (Docker Hub, ECR, GCR):
+Production deploy is:
+
+1. Build the Docker image.
+2. Push it to Docker Hub.
+3. Copy the production env file to the server.
+4. Pull the image on the server.
+5. Start the container.
 
 ```bash
 # Build and tag
@@ -536,6 +589,16 @@ docker push nhatminh115/ppe_system:v1.0.0
 docker pull nhatminh115/ppe_system:v1.0.0
 docker-compose -f docker-compose.prod.yml up -d
 ```
+
+How env injection works:
+
+```bash
+# On the server, keep secrets in a file like this
+cp /secure/path/.env.production .env
+docker compose up -d
+```
+
+If you use GitHub Actions, AWS SSM, or another secret store, it can create that file or pass the values directly. The important part is: the secrets stay outside the image, and Docker reads them only when the container starts.
 
 #### Troubleshooting
 
