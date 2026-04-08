@@ -273,7 +273,10 @@ Evaluated across 10 synthetic violation scenarios via LLM-as-judge (Gemini 3.1 P
 
 **Video Demo**
 
-https://github.com/user-attachments/assets/7d18e0cb-dba9-4d97-8319-41e1005efcc8
+
+
+https://github.com/user-attachments/assets/56d2bce2-6f40-4413-a22e-83af942a0876
+
 
 ---
 
