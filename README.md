@@ -384,13 +384,17 @@ SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
 
 Expected tables: `daily_reports`, `drift_log`, `ppe_label_audit`, `ppe_labels`, `ppe_violations`
 
-### Step 3 — Build the RAG index
+### Step 3 — RAG Index (Optional Regeneration)
+
+If `data/chroma_db` is already present in the repository or in your deployment artifact, you can skip this step.
+
+Only run this when the regulation source changes and you need to rebuild the vector store:
 
 ```bash
 python rag/ingest.py
 ```
 
-This creates `data/chroma_db`, used by the daily regulation-cited report pipeline.
+This regenerates `data/chroma_db`, which is used by the daily regulation-cited report pipeline.
 
 ### Step 4 — Provision AWS infrastructure (Terraform)
 
