@@ -264,6 +264,29 @@ def report_agent(state: ReportState) -> ReportState:
     flags     = state.get("systemic_flags", [])
     report_date = state["report_date"]
 
+    # Short-circuit: no activity today — skip LLM call entirely
+    if summary.get("total_events", 0) == 0:
+        narrative = f"[Hardcoded] No PPE violations recorded on {report_date}. No corrective action required."
+        try:
+            from src.infrastructure.supabase import get_supabase_service_client
+            client = get_supabase_service_client()
+            if client:
+                client.table("daily_reports").upsert(
+                    {
+                        "report_date":    report_date,
+                        "summary":        summary,
+                        "narrative":      narrative,
+                        "quality":        quality,
+                        "systemic_flags": flags,
+                        "engine":         "hardcoded",
+                    },
+                    on_conflict="report_date",
+                ).execute()
+                logger.info("report_agent: no activity on %s — hardcoded narrative persisted", report_date)
+        except Exception as exc:
+            logger.warning("report_agent: Supabase persist failed: %s", exc)
+        return {**state, "narrative": narrative, "regulation_context": ""}
+
     # RAG context
     regulation_context = ""
     violation_types = list(summary.get("violation_counts", {}).keys())
