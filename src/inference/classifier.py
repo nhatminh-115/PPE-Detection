@@ -304,6 +304,7 @@ def _classify_siglip_batch(siglip_bundle, frame, boxes, device, pose_results=Non
     model = siglip_bundle["model"]
     preprocess = siglip_bundle["preprocess"]
     text_feats = siglip_bundle["text_features"]
+    is_onnx = siglip_bundle.get("format") == "onnx"
 
     head_tensors = []
     torso_tensors = []
@@ -353,11 +354,22 @@ def _classify_siglip_batch(siglip_bundle, frame, boxes, device, pose_results=Non
     torso_batch = torch.stack(torso_tensors).to(device)
 
     with torch.no_grad():
-        head_features = model.encode_image(head_batch)
+        if is_onnx:
+            _input_name = model.get_inputs()[0].name
+            head_features = torch.from_numpy(
+                model.run(None, {_input_name: head_batch.cpu().numpy().astype(np.float32)})[0]
+            ).to(device)
+            torso_features = torch.from_numpy(
+                model.run(None, {_input_name: torso_batch.cpu().numpy().astype(np.float32)})[0]
+            ).to(device)
+            logit_scale = torch.tensor(siglip_bundle["logit_scale"]).to(device)
+        else:
+            head_features = model.encode_image(head_batch)
+            torso_features = model.encode_image(torso_batch)
+            logit_scale = model.logit_scale.exp()
+
         head_features = head_features / head_features.norm(dim=-1, keepdim=True)
-        torso_features = model.encode_image(torso_batch)
         torso_features = torso_features / torso_features.norm(dim=-1, keepdim=True)
-        logit_scale = model.logit_scale.exp()
 
         h_sim = logit_scale * head_features @ text_feats["hardhat"].T
         h_prob = h_sim.softmax(dim=-1)[:, 0].cpu().numpy()

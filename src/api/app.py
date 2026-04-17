@@ -19,8 +19,10 @@ from fastapi.templating import Jinja2Templates
 from ultralytics import YOLO
 from src.config import (
     SIGLIP_MODEL_NAME, SIGLIP_PRETRAINED, SIGLIP_PROMPTS,
+    SIGLIP_ONNX_ENABLED, SIGLIP_ONNX_EXPORT_ON_STARTUP, SIGLIP_ONNX_PATH,
+    SIGLIP_ONNX_HF_REPO,
     IMG_SIZE, NUM_CLASSES,
-    EFFNET_RUN_ID, EFFNET_STABLE_RUN_ID,
+    EFFNET_RUN_ID, EFFNET_STABLE_RUN_ID, EFFNET_EXPERIMENT_NAME,
     EFFNET_ONNX_ARTIFACT_PATH, EFFNET_ONNX_LOCAL_FALLBACK,
     EFFNET_ONNX_INT8_FALLBACK, EFFNET_PT_ARTIFACT_PATH, EFFNET_PT_LOCAL_FALLBACK,
     EFFNET_USE_ONNX, EFFNET_PREFER_RECENT_PT,
@@ -28,7 +30,7 @@ from src.config import (
     MODEL2_PATH, MODEL_POSE_PATH,
     INFERENCE_THREAD_WORKERS,
 )
-from src.infrastructure.mlflow import pull_artifact_from_mlflow_run
+from src.infrastructure.mlflow import pull_artifact_from_mlflow_run, find_latest_effnet_run_id
 
 logging.basicConfig(
     level=logging.INFO,
@@ -205,6 +207,99 @@ with torch.no_grad():
     siglip_model.encode_image(torch.zeros(1, 3, warmup_h, warmup_w).to(device))
 logger.info("SigLIP model ready.")
 
+siglip_logit_scale = float(siglip_model.logit_scale.exp().item())
+_siglip_image_size = warmup_h
+
+
+def _export_siglip_onnx_on_startup(model: torch.nn.Module, image_size: int, output_path: str) -> bool:
+    """Export SigLIP image encoder to ONNX INT8 at startup. Returns True on success."""
+    try:
+        from onnxruntime.quantization import quantize_dynamic, QuantType
+
+        class _Encoder(torch.nn.Module):
+            def __init__(self, m):
+                super().__init__()
+                self.visual = m.visual
+
+            def forward(self, x):
+                return self.visual(x)
+
+        fp32_tmp = output_path + ".fp32.tmp"
+        encoder = _Encoder(model).eval().cpu()
+        dummy = torch.zeros(1, 3, image_size, image_size)
+
+        logger.info("SigLIP ONNX export starting (this may take a minute)...")
+        torch.onnx.export(
+            encoder,
+            dummy,
+            fp32_tmp,
+            opset_version=17,
+            input_names=["pixel_values"],
+            output_names=["image_features"],
+            dynamic_axes={
+                "pixel_values": {0: "batch_size"},
+                "image_features": {0: "batch_size"},
+            },
+            do_constant_folding=True,
+        )
+        quantize_dynamic(fp32_tmp, output_path, weight_type=QuantType.QInt8)
+        os.remove(fp32_tmp)
+        logger.info(f"SigLIP ONNX export complete -> {output_path}")
+        return True
+    except Exception as ex:
+        logger.error(f"SigLIP ONNX export failed: {ex}")
+        return False
+
+
+def _load_siglip_onnx() -> object:
+    """Load SigLIP ONNX session. Returns ORT InferenceSession or None."""
+    if ort is None:
+        logger.warning("onnxruntime not installed; SigLIP ONNX disabled")
+        return None
+
+    if not os.path.exists(SIGLIP_ONNX_PATH):
+        if SIGLIP_ONNX_HF_REPO:
+            try:
+                from huggingface_hub import hf_hub_download
+                logger.info("Downloading SigLIP ONNX from HF Hub (%s)...", SIGLIP_ONNX_HF_REPO)
+                hf_hub_download(
+                    repo_id=SIGLIP_ONNX_HF_REPO,
+                    filename="siglip_image_encoder.onnx",
+                    local_dir=os.path.dirname(SIGLIP_ONNX_PATH) or "model_cache",
+                    token=os.getenv("HF_TOKEN"),
+                )
+                logger.info("SigLIP ONNX downloaded -> %s", SIGLIP_ONNX_PATH)
+            except Exception as ex:
+                logger.warning("HF Hub download failed: %s", ex)
+
+        if not os.path.exists(SIGLIP_ONNX_PATH):
+            if SIGLIP_ONNX_EXPORT_ON_STARTUP:
+                ok = _export_siglip_onnx_on_startup(siglip_model, _siglip_image_size, SIGLIP_ONNX_PATH)
+                if not ok:
+                    return None
+            else:
+                logger.warning(
+                    "SigLIP ONNX not found at %s. "
+                    "Run: python scripts/export_siglip_onnx.py",
+                    SIGLIP_ONNX_PATH,
+                )
+                return None
+
+    try:
+        sess_opts = ort.SessionOptions()
+        sess_opts.inter_op_num_threads = int(os.getenv("ORT_INTER_THREADS", "0"))
+        sess_opts.intra_op_num_threads = int(os.getenv("ORT_INTRA_THREADS", "0"))
+        session = ort.InferenceSession(
+            SIGLIP_ONNX_PATH,
+            providers=["CPUExecutionProvider"],
+            sess_options=sess_opts,
+        )
+        logger.info(f"SigLIP ONNX loaded from {SIGLIP_ONNX_PATH}")
+        return session
+    except Exception as ex:
+        logger.warning(f"SigLIP ONNX load failed: {ex}; falling back to PyTorch")
+        return None
+
 model1_path     = pull_artifact_from_mlflow_run(MLFLOW_RUN_ID, MLFLOW_ARTIFACT_PATH)
 model2_path     = MODEL2_PATH
 model_pose_path = MODEL_POSE_PATH
@@ -263,33 +358,32 @@ def _load_effnet_pytorch():
     return None
 
 
-def _load_effnet_bundle():
+def _load_effnet_bundle(run_id: str = EFFNET_RUN_ID):
     """
     Load EfficientNet stage-2 classifier with smart strategy.
-    
-    If PREFER_RECENT_PT=True (default):
-      1. Try recent PT from EFFNET_RUN_ID (likely new retrain) → use immediately
-      2. Try stable ONNX from EFFNET_STABLE_RUN_ID → proven production quality
-      3. Local ONNX cache (FP32/INT8)
-      4. Fallback to PT
-      
-    If PREFER_RECENT_PT=False:
-      1. Try stable ONNX first (proven quality)
-      2. Then recent PT (retrain)
-      3. Local ONNX
-      4. Fallback to PT
-      
-    This balances:
-    - New retrain adoption (recent PT available immediately after drift trigger)
-    - Production stability (stable ONNX always available as fallback)
-    - Performance (ONNX 6x faster than PT)
+
+    run_id: auto-discovered at startup via find_latest_effnet_run_id() — most recent
+            finished run with export_onnx=success. Falls back to EFFNET_STABLE_RUN_ID.
+
+    If PREFER_RECENT_PT=False (default):
+      1. Stable ONNX from EFFNET_STABLE_RUN_ID
+      2. Latest ONNX from auto-discovered run_id
+      3. Local ONNX cache
+      4. Latest PT from run_id
+      5. PT fallback from disk
+
+    If PREFER_RECENT_PT=True:
+      1. Latest PT from auto-discovered run_id
+      2. Stable ONNX
+      3. Local ONNX cache
+      4. PT fallback from disk
     """
     if EFFNET_PREFER_RECENT_PT:
         # Strategy 1: Prefer recent PT retrain (new models used immediately)
         logger.debug(f"Loading EffNet: Priority = RECENT_PT > STABLE_ONNX > LOCAL > FALLBACK_PT")
-        
+
         # Try recent PT from retrain
-        bundle = _load_effnet_pytorch_from_run(EFFNET_RUN_ID)
+        bundle = _load_effnet_pytorch_from_run(run_id)
         if bundle is not None:
             logger.info("✓ Loaded recent PT from retrain run (EffNet latest)")
             return bundle
@@ -321,8 +415,15 @@ def _load_effnet_bundle():
             logger.info("✓ Loaded stable ONNX from verified run")
             return bundle
         
+        # Try latest ONNX from auto-discovered run (newer than stable)
+        if run_id != EFFNET_STABLE_RUN_ID:
+            bundle = _load_effnet_onnx_from_run(run_id)
+            if bundle is not None:
+                logger.info("✓ Loaded latest ONNX from auto-discovered run")
+                return bundle
+
         # Try recent PT (newer, but untested)
-        bundle = _load_effnet_pytorch_from_run(EFFNET_RUN_ID)
+        bundle = _load_effnet_pytorch_from_run(run_id)
         if bundle is not None:
             logger.info("○ Loaded recent PT (stable ONNX unavailable)")
             return bundle
@@ -434,14 +535,35 @@ def _load_effnet_pytorch_from_run(run_id: str):
 
 
 
+_effnet_run_id = find_latest_effnet_run_id(EFFNET_EXPERIMENT_NAME, fallback=EFFNET_RUN_ID)
+
+_siglip_ort_session = _load_siglip_onnx() if SIGLIP_ONNX_ENABLED else None
+
 # Bundle for classifier
-model_stage2 = {
-    "siglip": {
+_siglip_bundle: dict
+if _siglip_ort_session is not None:
+    _siglip_bundle = {
+        "model": _siglip_ort_session,
+        "preprocess": siglip_preprocess,
+        "text_features": siglip_text_features,
+        "format": "onnx",
+        "logit_scale": siglip_logit_scale,
+    }
+    # PyTorch model no longer needed — free ~1.6 GB RAM.
+    del siglip_model
+    torch.cuda.empty_cache()
+    logger.info("SigLIP inference: ONNX INT8 (PyTorch model offloaded)")
+else:
+    _siglip_bundle = {
         "model": siglip_model,
         "preprocess": siglip_preprocess,
         "text_features": siglip_text_features,
-    },
-    "effnet": _load_effnet_bundle(),
+        "logit_scale": siglip_logit_scale,
+    }
+
+model_stage2 = {
+    "siglip": _siglip_bundle,
+    "effnet": _load_effnet_bundle(run_id=_effnet_run_id),
 }
 
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=INFERENCE_THREAD_WORKERS)

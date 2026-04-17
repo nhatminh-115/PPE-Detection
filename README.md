@@ -32,7 +32,7 @@ The system runs a multi-stage deep learning pipeline that detects violations, se
 |---|---|---|
 | Person Detection | YOLO11s + YOLO26l + WBF | Dual-model ensemble, recall-optimized |
 | Tracking | ByteTrack + Box EMA | Stable ID assignment, spatial smoothing |
-| PPE Classification | SigLIP SO400M / EfficientNetV2-B0 | Zero-shot (large boxes) vs. trained (small boxes) |
+| PPE Classification | SigLIP SO400M (ONNX INT8) / EfficientNetV2-B0 (ONNX) | Zero-shot (large boxes) vs. trained (small boxes) |
 | Pose Estimation | YOLO26m-pose | Precise head/torso crop localization for SigLIP |
 | State Management | Hysteresis FSM + Classify Lock | Alert fatigue suppression, GPU load reduction |
 | Compliance Reporting | LangGraph + Groq LLM + RAG ChromaDB | Regulation-cited daily reports |
@@ -65,10 +65,12 @@ Classification is routed by bounding box size:
 
 - **Small boxes (min side < 110px) → EfficientNetV2-B0:** Full-body crop with 10% padding. Trained on the Ultralytics PPE dataset (F1=0.92). Inference runs via ONNX Runtime; inputs are automatically chunked if the exported model has a fixed batch dimension.
 
-- **Large boxes (min side ≥ 110px) → SigLIP SO400M:** Zero-shot classification using text prompts. YOLO26m-pose runs every 9 frames to extract COCO keypoints and define precise crop regions:
+- **Large boxes (min side ≥ 110px) → SigLIP SO400M (ONNX INT8):** Zero-shot classification using text prompts. YOLO26m-pose runs every 9 frames to extract COCO keypoints and define precise crop regions:
   - *Hardhat crop:* Head keypoints (indices 0–4), 45% padding.
   - *Vest crop:* Torso keypoints (indices 5, 6, 11, 12), 25% padding.
   - *Fallback:* Fixed-percentage crop when pose confidence is insufficient.
+
+  The image encoder runs via ONNX Runtime INT8 (`SIGLIP_ONNX_ENABLED=1`), reducing model size from 1632 MB to 411 MB. The PyTorch model is loaded once at startup for text embedding pre-computation, then offloaded to free ~1.6 GB RAM. Text embeddings and `logit_scale` are cached for the lifetime of the process.
 
   HSV Color Priors post-process the hardhat probability: white/yellow pixels in the head ROI add a boost (+0.10–0.12), dark pixels apply a penalty (−0.14).
 
@@ -176,7 +178,8 @@ Remote state is stored in the same S3 bucket at `terraform/state/terraform.tfsta
 | Artifact | Location |
 |---|---|
 | Docker image | Docker Hub — `nhatminh115/ppe_system:latest` |
-| Model weights | MLflow on DagsHub — stable ONNX at `weights/effnet_ppe.onnx` |
+| EffNet ONNX | MLflow on DagsHub — auto-discovered: latest finished run with `export_onnx=success` in `PPE_Stage2_Classification_`, stable fallback `af05de89` |
+| SigLIP ONNX INT8 | HF Hub — `Nhatminh1234/siglip-so400m-ppe-int8` (downloaded automatically at startup if `SIGLIP_ONNX_ENABLED=1`) |
 | Dataset | S3 — `ppe-flywheel/ppe-flywheel/` |
 
 ---
@@ -236,6 +239,15 @@ A reporting pipeline runs daily at 23:00 ICT via GitHub Actions.
 | ONNX FP32 (CPU) | 7.46 ms | 134 FPS | 22.4 MB |
 
 > ~6x speedup via ONNX Runtime graph optimization. Stable artifact: [MLflow Run](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow) → run `af05de89dacb4aaf893c68a2e4552ba3`.
+
+### ONNX INT8 Export (SigLIP SO400M image encoder, CPU)
+
+| Format | Size | Cosine similarity vs PyTorch | Decision flip rate (19 crops) |
+|---|---|---|---|
+| PyTorch FP32 | 1632 MB | — | — |
+| ONNX INT8 (dynamic) | 411 MB | 0.994 | 5.3% |
+
+> Dynamic INT8 quantizes MatMul/Gemm layers only; LayerNorm and attention scores remain FP32. Expected for large ViT PTQ — cosine similarity 0.990+ is the acceptance threshold. To regenerate: `python scripts/export_siglip_onnx.py`. To evaluate parity on new crops: `python scripts/eval_siglip_onnx.py`.
 
 ### LLM Report Quality
 
@@ -330,6 +342,11 @@ SECOND_OPINION_THRESHOLD=1.0
 CLEANUP_SECRET=your_random_cleanup_secret
 MUTE_THIRD_PARTY_STARTUP_LOGS=1
 QUIET_GET_ACCESS_LOGS=1
+
+# SigLIP ONNX INT8 — auto-downloaded from HF Hub on first startup
+SIGLIP_ONNX_ENABLED=1
+SIGLIP_ONNX_PATH=model_cache/siglip_image_encoder.onnx
+SIGLIP_ONNX_HF_REPO=Nhatminh1234/siglip-so400m-ppe-int8
 ```
 
 ---
@@ -503,7 +520,7 @@ docker exec ppe_inference nvidia-smi
 
 | Symptom | Fix |
 |---|---|
-| CUDA out of memory | Reduce batch size in `src/config.py` or use INT8 quantized ONNX |
+| CUDA out of memory | Reduce batch size in `src/config.py`; SigLIP ONNX INT8 is enabled by default and frees ~1.6 GB GPU RAM vs PyTorch |
 | Image pull fails | Run `docker login` first |
 | GPU not detected | Verify NVIDIA Container Toolkit: `docker run --rm --runtime=nvidia nvidia/cuda:12.8-runtime nvidia-smi` |
 | Port 8000 in use | Change the host port in the `docker run` command: `-p 8001:8000` |

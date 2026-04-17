@@ -21,8 +21,9 @@ MODEL_POSE_PATH      = "yolo26m-pose.pt"
 # EfficientNetV2-B0 Classifier
 # EFFNET_STABLE_RUN_ID: Verified, production-stable run with ONNX export (always available for fallback)
 # EFFNET_RUN_ID: Latest good retrain run (may be updated after each drift trigger)
-EFFNET_STABLE_RUN_ID = "af05de89dacb4aaf893c68a2e4552ba3"  # Stable, ✓ ONNX available
-EFFNET_RUN_ID        = "af05de89dacb4aaf893c68a2e4552ba3"  # Latest retrain (update after evaluating new runs)
+EFFNET_STABLE_RUN_ID  = "af05de89dacb4aaf893c68a2e4552ba3"  # Stable, ✓ ONNX available
+EFFNET_RUN_ID         = os.getenv("EFFNET_RUN_ID", "af05de89dacb4aaf893c68a2e4552ba3")  # overridden at startup by MLflow discovery
+EFFNET_EXPERIMENT_NAME = "PPE_Stage2_Classification_"
 
 # ONNX format (artifact stored in MLflow run)
 EFFNET_ONNX_ARTIFACT_PATH    = "weights/effnet_ppe.onnx"
@@ -120,6 +121,11 @@ DARK_HEAD_PROB_PENALTY = 0.14
 # ---------------------------------------------------------------------------
 SIGLIP_MODEL_NAME = 'ViT-SO400M-14-SigLIP'
 SIGLIP_PRETRAINED = 'webli'
+SIGLIP_ONNX_ENABLED = os.getenv("SIGLIP_ONNX_ENABLED", "0") == "1"
+SIGLIP_ONNX_EXPORT_ON_STARTUP = os.getenv("SIGLIP_ONNX_EXPORT_ON_STARTUP", "0") == "1"
+SIGLIP_ONNX_PRECISION = os.getenv("SIGLIP_ONNX_PRECISION", "fp16").strip().lower()
+SIGLIP_ONNX_PATH = os.getenv("SIGLIP_ONNX_PATH", "model_cache/siglip_image_encoder.onnx")
+SIGLIP_ONNX_HF_REPO = os.getenv("SIGLIP_ONNX_HF_REPO", "Nhatminh1234/siglip-so400m-ppe-int8")
 SIGLIP_PROMPTS = {
     'hardhat': {
         'positive': [

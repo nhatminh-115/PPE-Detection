@@ -210,6 +210,7 @@ __marimo__/
 *.pt
 *.pth
 *.onnx
+*.fp32.tmp
 
 datasets/
 model_cache/
@@ -231,7 +232,6 @@ Thumbs.db
 # Local env variants (keep .env.example if present)
 .env.*
 !.env.example
-
 
 benchmark_sr.py
 .claude/
