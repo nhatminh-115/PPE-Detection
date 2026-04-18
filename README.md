@@ -15,7 +15,7 @@ It combines multi-model detection, pose-guided classification, automated reporti
 
 ## Table of Contents
 
-1. [Quick Snapshot (CV)](#1-quick-snapshot-cv)
+1. [Quick Snapshot](#1-quick-snapshot-cv)
 2. [System Architecture](#2-system-architecture)
 3. [Data Flywheel](#3-data-flywheel)
 4. [Infrastructure](#4-infrastructure)
@@ -25,7 +25,7 @@ It combines multi-model detection, pose-guided classification, automated reporti
 
 ---
 
-## 1. Quick Snapshot (CV)
+## 1. Quick Snapshot
 
 ### What this project does
 
