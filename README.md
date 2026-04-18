@@ -7,24 +7,48 @@
 
 # PPE Detection
 
-A real-time, cloud-native inference engine for automated Personal Protective Equipment (PPE) compliance monitoring in construction and industrial environments.
+A real-time, cloud-native vision system for PPE compliance monitoring in construction and industrial environments.
 
-The system runs a multi-stage deep learning pipeline that detects violations, sends instant alerts, and generates daily compliance reports grounded in Vietnamese labor regulations (Thong tu 25/2022). It is designed as a closed-loop flywheel: violations feed a human labeling interface, a vision second-opinion agent surfaces disagreements, confirmed labels are versioned to S3, and model drift automatically triggers EfficientNet retraining on an EC2 Spot Instance.
+It combines multi-model detection, pose-guided classification, automated reporting, and a human-in-the-loop retraining flywheel.
 
 ---
 
 ## Table of Contents
 
-1. [System Architecture](#1-system-architecture)
-2. [Data Flywheel](#2-data-flywheel)
-3. [Infrastructure](#3-infrastructure)
-4. [Automated Reporting](#4-automated-reporting)
-5. [Model Performance](#5-model-performance)
-6. [Setup Guide](#6-setup-guide)
+1. [Quick Snapshot (CV)](#1-quick-snapshot-cv)
+2. [System Architecture](#2-system-architecture)
+3. [Data Flywheel](#3-data-flywheel)
+4. [Infrastructure](#4-infrastructure)
+5. [Automated Reporting](#5-automated-reporting)
+6. [Model Performance](#6-model-performance)
+7. [Setup Guide](#7-setup-guide)
 
 ---
 
-## 1. System Architecture
+## 1. Quick Snapshot (CV)
+
+### What this project does
+
+- Detects workers and PPE violations from live camera streams.
+- Sends instant violation alerts and generates daily regulation-grounded reports.
+- Continuously improves classifier quality via human labels + automated retraining.
+
+### Technical highlights
+
+- Two-stage vision pipeline: YOLO ensemble detection + route-by-size PPE classification.
+- Large-person classification via SigLIP SO400M ONNX INT8 with pose-guided crops.
+- Multi-camera architecture with per-camera isolated inference state.
+- End-to-end MLOps: Supabase + S3 + MLflow + GitHub Actions + Terraform.
+
+### Impact highlights
+
+- SigLIP ONNX INT8 size reduced from 1632 MB to 411 MB.
+- On this machine, SigLIP ONNX INT8 achieved ~5.7x-6.0x speedup vs PyTorch FP32 on CPU.
+- Closed-loop flywheel automatically triggers retraining from confirmed production drift.
+
+---
+
+## 2. System Architecture
 
 ![PPE Vision Architecture](docs/PPE_Pipeline_5.png)
 
@@ -39,7 +63,7 @@ The system runs a multi-stage deep learning pipeline that detects violations, se
 | Data Flywheel | S3 + Supabase + EC2 Spot | Automated labeling, drift detection, retraining |
 | Infrastructure | Terraform + GitHub Actions | Reproducible AWS provisioning, CI/CD |
 
-### 1.1 Core AI Pipeline
+### 2.1 Core AI Pipeline
 
 **Stage 1: Detection Ensemble**
 
@@ -76,7 +100,7 @@ Classification is routed by bounding box size:
 
 [![HuggingFace Spaces](https://img.shields.io/badge/-Live%20Demo-yellow)](https://huggingface.co/spaces/Nhatminh1234/ppe-classifier) — Try the PPE classifier online.
 
-### 1.2 State Management & Alerting
+### 2.2 State Management & Alerting
 
 - **Hysteresis FSM:** Controls SAFE → WARN → VIOLATION transitions with strict margins to prevent oscillation. EMA smoothing (α=0.5) is applied to raw probabilities before state evaluation.
 
@@ -88,7 +112,7 @@ Classification is routed by bounding box size:
 
 - **Instant Telegram Alert:** Each confirmed violation dispatches a Telegram notification with the crop image, in parallel with the Supabase insert.
 
-### 1.3 Multi-Camera Architecture
+### 2.3 Multi-Camera Architecture
 
 - Cameras are registered via **CameraRegistry**, each assigned a unique `cam_id` and `session_id`.
 - Each camera runs a dedicated **inference thread** with isolated tracker, EMA, FSM, and classify lock state.
@@ -98,7 +122,7 @@ Classification is routed by bounding box size:
 
 ---
 
-## 2. Data Flywheel
+## 3. Data Flywheel
 
 The system implements a closed-loop retraining pipeline that continuously improves EfficientNet from real production data.
 
@@ -113,15 +137,15 @@ Violations (Supabase)
             └── EC2 Spot Retrain (EfficientNet fine-tune → MLflow)
 ```
 
-### 2.1 Vision Second Opinion Agent
+### 3.1 Vision Second Opinion Agent
 
 A Groq vision agent (Llama 4 Scout) runs nightly on uncertain violation events. It skips events already labeled (human or auto), and auto-labels remaining events as `has-fp`, `has-fn`, or `all-correct` — writing to `ppe_labels` with `is_auto_labeled=True`. Disagreements surface as pre-labeled cards in Label Studio for human review and become high-value retraining candidates.
 
-### 2.2 Human-in-the-Loop Labeling
+### 3.2 Human-in-the-Loop Labeling
 
 The Label Studio tab surfaces merged violation events (keyed by `session_id:tracker_id`) as label cards. Annotators confirm or reject model predictions; verdicts are derived server-side as TP/FP/FN/TN per PPE item. Crops are upscaled with Real-ESRGAN x4 (74ms/crop, +38% sharpness recovery) before storage.
 
-### 2.3 S3 Dataset Versioning
+### 3.3 S3 Dataset Versioning
 
 Confirmed human labels and crops are exported to S3 daily:
 
@@ -132,7 +156,7 @@ ppe-flywheel/
   terraform/state/terraform.tfstate    # Terraform remote state
 ```
 
-### 2.4 Drift Monitor & Retrain Trigger
+### 3.4 Drift Monitor & Retrain Trigger
 
 Two daily disagreement signals are computed:
 
@@ -149,9 +173,9 @@ Scout disagreement is tracked separately as an early-warning metric. When trigge
 
 ---
 
-## 3. Infrastructure
+## 4. Infrastructure
 
-### 3.1 AWS Resources (Terraform-managed)
+### 4.1 AWS Resources (Terraform-managed)
 
 All AWS resources are defined in `terraform/` and provisioned via Terraform >= 1.10.
 
@@ -164,7 +188,7 @@ All AWS resources are defined in `terraform/` and provisioned via Terraform >= 1
 
 Remote state is stored in the same S3 bucket at `terraform/state/terraform.tfstate` using native S3 locking (no DynamoDB required — Terraform 1.10+).
 
-### 3.2 CI/CD Workflows
+### 4.2 CI/CD Workflows
 
 | Workflow | Trigger | Action |
 |---|---|---|
@@ -173,7 +197,7 @@ Remote state is stored in the same S3 bucket at `terraform/state/terraform.tfsta
 | `retrain_trigger.yml` | 23:30 ICT daily | Check drift signal → launch EC2 Spot Instance if triggered |
 | `terraform.yml` | Push/PR on `terraform/**` | Terraform plan (PR) / apply (main) |
 
-### 3.3 Artifact Registry
+### 4.3 Artifact Registry
 
 | Artifact | Location |
 |---|---|
@@ -184,7 +208,7 @@ Remote state is stored in the same S3 bucket at `terraform/state/terraform.tfsta
 
 ---
 
-## 4. Automated Reporting
+## 5. Automated Reporting
 
 A reporting pipeline runs daily at 23:00 ICT via GitHub Actions.
 
@@ -210,7 +234,7 @@ A reporting pipeline runs daily at 23:00 ICT via GitHub Actions.
 
 ---
 
-## 5. Model Performance
+## 6. Model Performance
 
 ### Detection Ensemble (VisDrone val set, 548 images)
 
@@ -242,12 +266,18 @@ A reporting pipeline runs daily at 23:00 ICT via GitHub Actions.
 
 ### ONNX INT8 Export (SigLIP SO400M image encoder, CPU)
 
-| Format | Size | Cosine similarity vs PyTorch | Decision flip rate (19 crops) |
-|---|---|---|---|
-| PyTorch FP32 | 1632 MB | — | — |
-| ONNX INT8 (dynamic) | 411 MB | 0.994 | 5.3% |
+| Format | Size | Cosine similarity vs PyTorch  | Latency (ms, batch=1) | Throughput (images/s, batch=1) |
+|---|---|---|---|---|
+| PyTorch FP32 | 1632 MB | — | — | 792.17 | 1.26 |
+| ONNX INT8 (dynamic) | 411 MB | 0.994 | 138.24 | 7.23 |
 
-> Dynamic INT8 quantizes MatMul/Gemm layers only; LayerNorm and attention scores remain FP32. Expected for large ViT PTQ — cosine similarity 0.990+ is the acceptance threshold. To regenerate: `python scripts/export_siglip_onnx.py`. To evaluate parity on new crops: `python scripts/eval_siglip_onnx.py`.
+> Dynamic INT8 quantizes MatMul/Gemm layers only; LayerNorm and attention scores remain FP32. Expected for large ViT PTQ — cosine similarity 0.990+ is the acceptance threshold. To regenerate: `python scripts/export_siglip_onnx.py`. To evaluate parity on new crops: `python scripts/eval_siglip_onnx.py`. Latency/throughput above were measured on this machine with CPUExecutionProvider (`warmup=2`, `runs=5`, input from `violation_crops`).
+
+To benchmark latency/throughput comparison on your machine:
+
+```bash
+python scripts/bench_siglip_onnx.py --onnx model_cache/siglip_image_encoder.onnx --batch-sizes 1 2 --warmup 2 --runs 5 --use-crops --crops-dir violation_crops --compare-pytorch
+```
 
 ### LLM Report Quality
 
@@ -282,7 +312,7 @@ https://github.com/user-attachments/assets/56d2bce2-6f40-4413-a22e-83af942a0876
 
 ---
 
-## 6. Setup Guide
+## 7. Setup Guide
 
 Choose the path that matches your use case:
 
@@ -527,7 +557,7 @@ docker exec ppe_inference nvidia-smi
 
 ---
 
-### Step 7 — Access the dashboard
+### Step 6 — Access the dashboard
 
 Open `http://localhost:8000/` in your browser.
 
