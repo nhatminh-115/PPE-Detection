@@ -98,7 +98,6 @@ Classification is routed by bounding box size:
 
   HSV Color Priors post-process the hardhat probability: white/yellow pixels in the head ROI add a boost (+0.10–0.12), dark pixels apply a penalty (−0.14).
 
-[![HuggingFace Spaces](https://img.shields.io/badge/-Live%20Demo-yellow)](https://huggingface.co/spaces/Nhatminh1234/ppe-classifier) — Try the PPE classifier online.
 
 ### 2.2 State Management & Alerting
 
@@ -262,7 +261,7 @@ A reporting pipeline runs daily at 23:00 ICT via GitHub Actions.
 | PyTorch (CPU) | ~45 ms | ~22 FPS | 22.4 MB |
 | ONNX FP32 (CPU) | 7.46 ms | 134 FPS | 22.4 MB |
 
-> ~6x speedup via ONNX Runtime graph optimization. Stable artifact: [MLflow Run](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow) → run `af05de89dacb4aaf893c68a2e4552ba3`.
+> ~6x speedup via ONNX Runtime graph optimization. Stable artifact: [MLflow Run](https://dagshub.com/nhatminh-115/PPE-Detection.mlflow/#/experiments/6/runs/af05de89dacb4aaf893c68a2e4552ba3).
 
 ### ONNX INT8 Export (SigLIP SO400M image encoder, CPU)
 
