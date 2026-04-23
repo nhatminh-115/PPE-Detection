@@ -244,3 +244,5 @@ terraform/terraform.tfstate.backup
 terraform/terraform.tfvars
 terraform/backend.hcl
 terraform/*.tfplan
+docs/Screenshot_1.png
+docs/pipeline_flow_animation.html

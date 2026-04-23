@@ -342,11 +342,23 @@ def upload_crop_to_storage(
         safe_key = merge_key.replace("/", "_").replace("\\", "_").replace(" ", "_")
         storage_path = f"crops/{safe_key}.jpg"
 
-        client.storage.from_(CROPS_BUCKET).upload(
-            storage_path,
-            data,
-            {"content-type": "image/jpeg", "upsert": "true"},
-        )
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                client.storage.from_(CROPS_BUCKET).upload(
+                    storage_path,
+                    data,
+                    {"content-type": "image/jpeg", "upsert": "true"},
+                )
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt < 2:
+                    import time as _time
+                    _time.sleep(0.5 * (attempt + 1))
+        else:
+            raise last_exc  # type: ignore[misc]
+
         public_url = client.storage.from_(CROPS_BUCKET).get_public_url(storage_path)
         logger.info("Crop uploaded: %s → sha256:%s", merge_key, sha256[:12])
         return public_url, sha256, fallback_used
@@ -415,7 +427,7 @@ def upsert_label(payload: dict, labeled_by: str = "anonymous") -> dict:
         "threshold_snapshot": payload.get("threshold_snapshot") or {},
         "is_auto_labeled":    bool(payload.get("is_auto_labeled", False)),
         "auto_label_model":   payload.get("auto_label_model"),
-        "expire_at":          (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(),
+        "expire_at":          (datetime.now(timezone.utc) + timedelta(days=2 if payload.get("is_auto_labeled") else 3)).isoformat(),
     }
 
     # Crop upload — skip if already uploaded for this merge_key
@@ -640,7 +652,7 @@ def cleanup_expired_crops() -> dict:
         rows = (
             client.table("ppe_labels")
             .select("id, merge_key, crop_url, crop_sha256")
-            .lt("expire_at", now_iso)
+            .or_(f"expire_at.lt.{now_iso},expire_at.is.null")
             .not_.is_("crop_url", "null")
             .execute()
             .data or []
@@ -657,12 +669,15 @@ def cleanup_expired_crops() -> dict:
         row_id      = row["id"]
         merge_key   = row.get("merge_key", "?")
 
-        has_storage_path = CROPS_BUCKET in crop_url
+        has_storage_path = f"/{CROPS_BUCKET}/" in crop_url
         storage_deleted  = False
         shared_object    = False
 
         if has_storage_path:
             path_part = crop_url.split(f"/{CROPS_BUCKET}/", 1)[-1].split("?")[0]
+            if path_part == crop_url:
+                logger.warning("cleanup: unexpected crop_url format, skipping: %s", crop_url[:80])
+                continue
 
             # Safety check: skip deletion if any non-expired label still references
             # the same hash (deduped objects are shared across rows).
