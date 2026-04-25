@@ -226,39 +226,33 @@ def _estimate_head_quality(head_crop):
     }
 
 
-def _estimate_white_hardhat_ratio(head_crop):
+def _estimate_white_hardhat_ratio(head_crop, precomputed_hsv=None):
     if head_crop is None or head_crop.size == 0:
         return 0.0
-
-    h, w = head_crop.shape[:2]
-    top_h = max(1, int(h * 0.60))
-    roi = head_crop[:top_h, :]
-    if roi.size == 0:
-        return 0.0
-
-    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    sat = hsv[:, :, 1].astype(np.float32)
-    val = hsv[:, :, 2].astype(np.float32)
-
+    if precomputed_hsv is None:
+        h = head_crop.shape[0]
+        roi = head_crop[:max(1, int(h * 0.60)), :]
+        if roi.size == 0:
+            return 0.0
+        precomputed_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    sat = precomputed_hsv[:, :, 1].astype(np.float32)
+    val = precomputed_hsv[:, :, 2].astype(np.float32)
     white_mask = (sat <= float(WHITE_HARDHAT_SAT_MAX)) & (val >= float(WHITE_HARDHAT_VAL_MIN))
     return float(white_mask.mean())
 
 
-def _estimate_bright_hardhat_ratio(head_crop):
+def _estimate_bright_hardhat_ratio(head_crop, precomputed_hsv=None):
     if head_crop is None or head_crop.size == 0:
         return 0.0
-
-    h, w = head_crop.shape[:2]
-    top_h = max(1, int(h * 0.60))
-    roi = head_crop[:top_h, :]
-    if roi.size == 0:
-        return 0.0
-
-    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    hue = hsv[:, :, 0].astype(np.float32)
-    sat = hsv[:, :, 1].astype(np.float32)
-    val = hsv[:, :, 2].astype(np.float32)
-
+    if precomputed_hsv is None:
+        h = head_crop.shape[0]
+        roi = head_crop[:max(1, int(h * 0.60)), :]
+        if roi.size == 0:
+            return 0.0
+        precomputed_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    hue = precomputed_hsv[:, :, 0].astype(np.float32)
+    sat = precomputed_hsv[:, :, 1].astype(np.float32)
+    val = precomputed_hsv[:, :, 2].astype(np.float32)
     white_mask = (sat <= float(WHITE_HARDHAT_SAT_MAX)) & (val >= float(WHITE_HARDHAT_VAL_MIN))
     yellow_mask = (
         (hue >= float(YELLOW_HARDHAT_H_MIN))
@@ -266,24 +260,20 @@ def _estimate_bright_hardhat_ratio(head_crop):
         & (sat >= float(YELLOW_HARDHAT_S_MIN))
         & (val >= float(YELLOW_HARDHAT_V_MIN))
     )
-    bright_mask = white_mask | yellow_mask
-    return float(bright_mask.mean())
+    return float((white_mask | yellow_mask).mean())
 
 
-def _estimate_dark_head_ratio(head_crop):
+def _estimate_dark_head_ratio(head_crop, precomputed_hsv=None):
     if head_crop is None or head_crop.size == 0:
         return 0.0
-
-    h, w = head_crop.shape[:2]
-    top_h = max(1, int(h * 0.60))
-    roi = head_crop[:top_h, :]
-    if roi.size == 0:
-        return 0.0
-
-    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    val = hsv[:, :, 2].astype(np.float32)
-    dark_mask = val <= float(DARK_HEAD_VAL_MAX)
-    return float(dark_mask.mean())
+    if precomputed_hsv is None:
+        h = head_crop.shape[0]
+        roi = head_crop[:max(1, int(h * 0.60)), :]
+        if roi.size == 0:
+            return 0.0
+        precomputed_hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    val = precomputed_hsv[:, :, 2].astype(np.float32)
+    return float((val <= float(DARK_HEAD_VAL_MAX)).mean())
 
 
 def _draw_siglip_focus_overlay(frame, head_rect, torso_rect, visibility_low=False):
@@ -350,17 +340,24 @@ def _classify_siglip_batch(siglip_bundle, frame, boxes, device, pose_results=Non
     if not valid_idx:
         return [None] * len(boxes)
 
-    head_batch = torch.stack(head_tensors).to(device)
-    torso_batch = torch.stack(torso_tensors).to(device)
+    if is_onnx:
+        # Keep on CPU — ONNX session runs on CPU, avoid GPU↔CPU roundtrip
+        head_batch = torch.stack(head_tensors)
+        torso_batch = torch.stack(torso_tensors)
+    else:
+        head_batch = torch.stack(head_tensors).to(device)
+        torso_batch = torch.stack(torso_tensors).to(device)
 
     with torch.no_grad():
         if is_onnx:
             _input_name = model.get_inputs()[0].name
+            head_np = head_batch.numpy().astype(np.float32)
+            torso_np = torso_batch.numpy().astype(np.float32)
             head_features = torch.from_numpy(
-                model.run(None, {_input_name: head_batch.cpu().numpy().astype(np.float32)})[0]
+                model.run(None, {_input_name: head_np})[0]
             ).to(device)
             torso_features = torch.from_numpy(
-                model.run(None, {_input_name: torso_batch.cpu().numpy().astype(np.float32)})[0]
+                model.run(None, {_input_name: torso_np})[0]
             ).to(device)
             logit_scale = torch.tensor(siglip_bundle["logit_scale"]).to(device)
         else:
@@ -388,9 +385,15 @@ def _classify_siglip_batch(siglip_bundle, frame, boxes, device, pose_results=Non
         else:
             head_crop_for_prior = None
 
-        white_ratio = _estimate_white_hardhat_ratio(head_crop_for_prior)
-        bright_ratio = _estimate_bright_hardhat_ratio(head_crop_for_prior)
-        dark_ratio = _estimate_dark_head_ratio(head_crop_for_prior)
+        if head_crop_for_prior is not None and head_crop_for_prior.size > 0:
+            _h = head_crop_for_prior.shape[0]
+            _roi = head_crop_for_prior[:max(1, int(_h * 0.60)), :]
+            _hsv = cv2.cvtColor(_roi, cv2.COLOR_BGR2HSV) if _roi.size > 0 else None
+        else:
+            _hsv = None
+        white_ratio = _estimate_white_hardhat_ratio(head_crop_for_prior, _hsv)
+        bright_ratio = _estimate_bright_hardhat_ratio(head_crop_for_prior, _hsv)
+        dark_ratio = _estimate_dark_head_ratio(head_crop_for_prior, _hsv)
         quality["white_hardhat_ratio"] = white_ratio
         quality["bright_hardhat_ratio"] = bright_ratio
         quality["dark_head_ratio"] = dark_ratio

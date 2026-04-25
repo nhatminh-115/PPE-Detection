@@ -244,5 +244,18 @@ terraform/terraform.tfstate.backup
 terraform/terraform.tfvars
 terraform/backend.hcl
 terraform/*.tfplan
-docs/Screenshot_1.png
-docs/pipeline_flow_animation.html
+# docs — ignore media and generated files, keep markdown notes
+*.mp4
+*.avi
+*.mov
+*.mkv
+docs/*.html
+docs/*.png
+docs/*.jpg
+docs/*.jpeg
+docs/*.gif
+docs/*.md
+docs/*.md
+
+# Scratch — local experiments only, never committed
+scratch/

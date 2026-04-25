@@ -64,6 +64,43 @@ def export_fp32(model: torch.nn.Module, image_size: int, output_path: str) -> No
     print(f"  FP32 ONNX -> {output_path} ({size_mb:.0f} MB)")
 
 
+class _SigLIPVisualEncoderFP16(torch.nn.Module):
+    """FP16 encoder wrapped to accept float32 input and return float32 output.
+    Internal computation runs in FP16 — no post-processing conversion needed."""
+
+    def __init__(self, model: torch.nn.Module) -> None:
+        super().__init__()
+        import copy
+        self.visual = copy.deepcopy(model.visual).half()  # deepcopy: don't modify original
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.visual(x.half()).float()
+
+
+def export_fp16_direct(model: torch.nn.Module, image_size: int, output_path: str) -> None:
+    """Export FP16 ONNX directly from PyTorch — avoids Cast node type conflicts
+    that occur when post-processing a FP32 ONNX with onnxconverter_common."""
+    encoder = _SigLIPVisualEncoderFP16(model).eval().cpu()
+    dummy = torch.zeros(1, 3, image_size, image_size)  # float32 input
+
+    torch.onnx.export(
+        encoder,
+        dummy,
+        output_path,
+        dynamo=False,
+        opset_version=17,
+        input_names=["pixel_values"],
+        output_names=["image_features"],
+        dynamic_axes={
+            "pixel_values": {0: "batch_size"},
+            "image_features": {0: "batch_size"},
+        },
+        do_constant_folding=True,
+    )
+    size_mb = os.path.getsize(output_path) / 1024 / 1024
+    print(f"  FP16 ONNX -> {output_path} ({size_mb:.0f} MB)")
+
+
 def quantize_int8(fp32_path: str, int8_path: str) -> None:
     from onnxruntime.quantization import quantize_dynamic, QuantType
 
@@ -88,7 +125,9 @@ def verify_parity(
     tensor = preprocess(pil).unsqueeze(0)
 
     with torch.no_grad():
-        pt_feat = model.visual(tensor).cpu().numpy()
+        # Cast to model's dtype in case model was converted to FP16 during export
+        dtype = next(model.visual.parameters()).dtype
+        pt_feat = model.visual(tensor.to(dtype)).float().cpu().numpy()
 
     input_name = ort_session.get_inputs()[0].name
     ort_feat = ort_session.run(None, {input_name: tensor.numpy().astype(np.float32)})[0]
@@ -134,24 +173,24 @@ def upload_to_hf(onnx_path: str, repo_id: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--fp32-only", action="store_true", help="Export FP32 only, skip INT8")
-    parser.add_argument("--output", default=None, help="INT8 output path (default: from config)")
+    parser.add_argument("--fp32-only", action="store_true", help="Export FP32 only, skip quantization")
+    parser.add_argument("--int8", action="store_true", help="Use INT8 instead of FP16 (not recommended with CUDA)")
+    parser.add_argument("--output", default=None, help="Output path (default: from config)")
     parser.add_argument("--skip-parity", action="store_true")
-    parser.add_argument("--upload", action="store_true", help="Upload INT8 ONNX to HF Hub after export")
+    parser.add_argument("--upload", action="store_true", help="Upload ONNX to HF Hub after export")
     parser.add_argument("--hf-repo", default=None, help=f"HF repo ID (default: {SIGLIP_ONNX_HF_REPO})")
     args = parser.parse_args()
 
-    int8_path = args.output or SIGLIP_ONNX_PATH
-    output_dir = os.path.dirname(int8_path) or "model_cache"
+    out_path = args.output or SIGLIP_ONNX_PATH
+    output_dir = os.path.dirname(out_path) or "model_cache"
     os.makedirs(output_dir, exist_ok=True)
     repo_id = args.hf_repo or SIGLIP_ONNX_HF_REPO
 
-    # Skip model loading entirely if the ONNX file already exists.
-    if os.path.exists(int8_path):
-        print(f"ONNX file already exists: {int8_path}")
+    if os.path.exists(out_path):
+        print(f"ONNX file already exists: {out_path}")
         if args.upload:
             print(f"Uploading to HF Hub ({repo_id})...")
-            upload_to_hf(int8_path, repo_id)
+            upload_to_hf(out_path, repo_id)
         print("\nDone.")
         return
 
@@ -172,16 +211,21 @@ def main() -> None:
 
     target_path = fp32_path
     if not args.fp32_only:
-        print("Quantizing to dynamic INT8...")
-        quantize_int8(fp32_path, int8_path)
-        target_path = int8_path
+        if args.int8:
+            print("Quantizing to dynamic INT8 (warning: causes CPU fallback on CUDA)...")
+            quantize_int8(fp32_path, out_path)
+        else:
+            print("Converting to FP16 (recommended for CUDA)...")
+            export_fp16_direct(model, image_size, out_path)
+        target_path = out_path
         print(f"  Removing FP32 intermediate: {fp32_path}")
         os.remove(fp32_path)
 
     if not args.skip_parity:
         import onnxruntime as ort
         print("Running parity check...")
-        session = ort.InferenceSession(target_path, providers=["CPUExecutionProvider"])
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        session = ort.InferenceSession(target_path, providers=providers)
         verify_parity(model, session, preprocess, image_size)
 
     if args.upload and not args.fp32_only:

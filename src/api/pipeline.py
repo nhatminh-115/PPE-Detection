@@ -136,6 +136,7 @@ class CameraState:
         self.active          = True
         self.paused          = False
         self.streaming       = False  # True while a generator is actively running
+        self.stream_gen      = 0     # increments each time a new generator takes over
         self.zone_polygon    = None   # np.array (N,2) int32 in processing-frame pixel coords
         self.frame_w         = None
         self.frame_h         = None
@@ -361,10 +362,12 @@ def generate_frames_for_camera(cam_id: str):
         logger.error(f"Unknown cam_id={cam_id}")
         return
 
-    # Prevent multiple concurrent generators for the same camera.
+    # Take over from any existing generator. Increment the generation counter so
+    # the old generator's finally block knows not to clear the streaming flag.
+    cam_state.stream_gen += 1
+    my_gen = cam_state.stream_gen
     if cam_state.streaming:
-        logger.warning(f"[{cam_id}] Generator already running, skipping duplicate request")
-        return
+        logger.info(f"[{cam_id}] New connection taking over from previous generator (gen={my_gen})")
     cam_state.streaming = True
 
     frame_q  = queue.Queue(maxsize=_FRAME_QUEUE_SIZE)
@@ -498,12 +501,14 @@ def generate_frames_for_camera(cam_id: str):
             yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
     finally:
-        cam_state.streaming = False
+        # Only clear the streaming flag if no newer generator has taken over.
+        if cam_state.stream_gen == my_gen:
+            cam_state.streaming = False
         frame_q.put(_STOP)
         inf_thread.join(timeout=5.0)
         if cap is not None:
             cap.release()
-        logger.info(f"[{cam_id}] Stream closed.")
+        logger.info(f"[{cam_id}] Stream closed (gen={my_gen}).")
 
 
 # ---------------------------------------------------------------------------

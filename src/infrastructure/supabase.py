@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 supabase_client         = None
 supabase_service_client = None
-db_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+db_executor = concurrent.futures.ThreadPoolExecutor(max_workers=8)
 reported_ids = set()
 
 
@@ -89,7 +89,7 @@ def send_telegram_alert(tracker_id: int, missing_items: list, crop_img) -> None:
                     f"https://api.telegram.org/bot{token}/sendPhoto",
                     data={"chat_id": chat_id, "caption": caption},
                     files={"photo": ("violation.jpg", buffer.tobytes(), "image/jpeg")},
-                    timeout=10,
+                    timeout=5,
                 )
                 return
 
@@ -97,7 +97,7 @@ def send_telegram_alert(tracker_id: int, missing_items: list, crop_img) -> None:
         _requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
             json={"chat_id": chat_id, "text": caption},
-            timeout=10,
+            timeout=5,
         )
     except Exception as e:
         logger.error(f"Telegram alert failed: {e}")
@@ -110,20 +110,16 @@ def log_violation_to_supabase(tracker_id, missing_items, missing_probs, crop_img
         timestamp_now = int(time.time())
         img_filename = f"violation_crops/ID{tracker_id}_{timestamp_now}.jpg"
 
-        if crop_img is not None and crop_img.size > 0:
-            import cv2
-            import os
-            os.makedirs("violation_crops", exist_ok=True)
-            cv2.imwrite(img_filename, crop_img)
-
-        # Upload crop to Supabase Storage so second_opinion can resolve the image
-        # without depending on a shared local disk path.
         crop_url: str | None = None
         if crop_img is not None and crop_img.size > 0:
             try:
                 from src.api.label_service import upload_crop_to_storage
+                import cv2, os
+                os.makedirs("violation_crops", exist_ok=True)
+                cv2.imwrite(img_filename, crop_img)
                 merge_key = f"violations/ID{tracker_id}_{timestamp_now}"
-                url, _sha256, _fallback = upload_crop_to_storage(img_filename, merge_key)
+                # Pass numpy array directly — avoids imread roundtrip from disk
+                url, _sha256, _fallback = upload_crop_to_storage(img_filename, merge_key, img_array=crop_img)
                 crop_url = url
             except Exception as _upload_exc:
                 logger.debug("violation crop cloud upload skipped: %s", _upload_exc)

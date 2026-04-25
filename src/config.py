@@ -27,15 +27,15 @@ EFFNET_EXPERIMENT_NAME = "PPE_Stage2_Classification_"
 
 # ONNX format (artifact stored in MLflow run)
 EFFNET_ONNX_ARTIFACT_PATH    = "weights/effnet_ppe.onnx"
-EFFNET_ONNX_LOCAL_FALLBACK   = "model_cache/effnet_ppe.onnx"
+EFFNET_ONNX_LOCAL_FALLBACK   = "model_cache/effnet_ppe_dynamic.onnx"
 EFFNET_ONNX_INT8_FALLBACK    = "model_cache/effnet_ppe_int8.onnx"
 
 # PyTorch format (retrain result, newer than ONNX)
 EFFNET_PT_ARTIFACT_PATH      = "weights/best_stage2_effnet.pt"
-EFFNET_PT_LOCAL_FALLBACK     = "best_stage2_effnet.pt"
+EFFNET_PT_LOCAL_FALLBACK     = "model_cache/e44391ef94b54ce3b867d46b7ce33ec3_best_stage2_effnet.pt"
 
 # Loading strategy
-EFFNET_USE_ONNX              = True  # Set to False to force PyTorch
+EFFNET_USE_ONNX              = os.getenv("EFFNET_USE_ONNX", "1") == "1"
 EFFNET_PREFER_RECENT_PT      = False  # Prefer recent PT retrain over stable ONNX
 
 # ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ SIGLIP_ONNX_ENABLED = os.getenv("SIGLIP_ONNX_ENABLED", "0") == "1"
 SIGLIP_ONNX_EXPORT_ON_STARTUP = os.getenv("SIGLIP_ONNX_EXPORT_ON_STARTUP", "0") == "1"
 SIGLIP_ONNX_PRECISION = os.getenv("SIGLIP_ONNX_PRECISION", "fp16").strip().lower()
 SIGLIP_ONNX_PATH = os.getenv("SIGLIP_ONNX_PATH", "model_cache/siglip_image_encoder.onnx")
-SIGLIP_ONNX_HF_REPO = os.getenv("SIGLIP_ONNX_HF_REPO", "Nhatminh1234/siglip-so400m-ppe-int8")
+SIGLIP_ONNX_HF_REPO = os.getenv("SIGLIP_ONNX_HF_REPO", "Nhatminh1234/siglip-so400m-ppe-fp16")
 SIGLIP_PROMPTS = {
     'hardhat': {
         'positive': [

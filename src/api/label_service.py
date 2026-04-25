@@ -296,14 +296,13 @@ def _resolve_model_metadata(row_ids: list[str], fallback_model: str | None) -> d
 def upload_crop_to_storage(
     image_path: str,
     merge_key: str,
+    img_array=None,
 ) -> tuple[str | None, str | None, bool]:
     """
-    Read local crop, normalize to 224x224, upload to Supabase Storage.
+    Normalize crop to 224x224, upload to Supabase Storage.
     Returns (public_url, sha256_hex, fallback_used).
 
-    Path is crops/<merge_key>.jpg — human-readable and directly browsable in Storage.
-    Dedupe: compute SHA-256 of the normalized bytes, then check if any existing ppe_labels
-    row already has that hash. If so, reuse its crop_url without re-uploading.
+    img_array: pass numpy BGR array directly to skip disk read.
     """
     client = get_supabase_service_client()
     if not client:
@@ -311,10 +310,13 @@ def upload_crop_to_storage(
 
     try:
         import cv2
-        img = cv2.imread(image_path)
-        if img is None:
-            logger.warning("Crop not found on disk: %s", image_path)
-            return None, None, False
+        if img_array is not None:
+            img = img_array
+        else:
+            img = cv2.imread(image_path)
+            if img is None:
+                logger.warning("Crop not found on disk: %s", image_path)
+                return None, None, False
 
         img_224, fallback_used = normalize_crop(img)
         ok, buf = cv2.imencode(".jpg", img_224, [cv2.IMWRITE_JPEG_QUALITY, 90])

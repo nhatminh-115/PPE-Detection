@@ -291,10 +291,11 @@ def _load_siglip_onnx() -> object:
         sess_opts.intra_op_num_threads = int(os.getenv("ORT_INTRA_THREADS", "0"))
         session = ort.InferenceSession(
             SIGLIP_ONNX_PATH,
-            providers=["CPUExecutionProvider"],
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
             sess_options=sess_opts,
         )
-        logger.info(f"SigLIP ONNX loaded from {SIGLIP_ONNX_PATH}")
+        active_provider = session.get_providers()[0]
+        logger.info(f"SigLIP ONNX loaded from {SIGLIP_ONNX_PATH} (provider: {active_provider})")
         return session
     except Exception as ex:
         logger.warning(f"SigLIP ONNX load failed: {ex}; falling back to PyTorch")
@@ -378,6 +379,12 @@ def _load_effnet_bundle(run_id: str = EFFNET_RUN_ID):
       3. Local ONNX cache
       4. PT fallback from disk
     """
+    if not EFFNET_USE_ONNX:
+        bundle = _load_effnet_pytorch()
+        if bundle is not None:
+            logger.info("EffNet PyTorch loaded (EFFNET_USE_ONNX=0, skipping remote fetch)")
+            return bundle
+
     if EFFNET_PREFER_RECENT_PT:
         # Strategy 1: Prefer recent PT retrain (new models used immediately)
         logger.debug(f"Loading EffNet: Priority = RECENT_PT > STABLE_ONNX > LOCAL > FALLBACK_PT")
