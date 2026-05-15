@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/SentinelVision_Logo.png" alt="SentinelVision" width="320"/>
+</p>
+
 [![CI/CD Pipeline](https://github.com/nhatminh-115/SentinelVision/actions/workflows/ci-cd-pipeline.yml/badge.svg)](https://github.com/nhatminh-115/SentinelVision/actions/workflows/ci-cd-pipeline.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.x-red)
