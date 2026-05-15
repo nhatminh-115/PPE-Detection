@@ -26,6 +26,8 @@ Detects PPE violations from live camera streams, sends instant alerts, generates
 
 ## 1. System Architecture
 
+![PPE Vision Architecture](docs/PPE_Pipeline_5.png)
+
 | Component | Technology | Role |
 |---|---|---|
 | Person Detection | YOLO11s + YOLO26l + WBF | Dual-model ensemble, recall-optimized |
