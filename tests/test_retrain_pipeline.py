@@ -6,7 +6,7 @@ MLFlow test (auto-loads .env):
 
 EC2 test — triggers real GitHub Actions workflow (force=true, min_samples=1):
     pytest tests/test_retrain_pipeline.py::test_ec2_workflow_triggered -v -s
-    Then monitor: https://github.com/nhatminh-115/PPE-Detection/actions
+    Then monitor: https://github.com/nhatminh-115/SentinelVision/actions
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 REPO_OWNER = "nhatminh-115"
-REPO_NAME  = "PPE-Detection"
+REPO_NAME  = "SentinelVision"
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────

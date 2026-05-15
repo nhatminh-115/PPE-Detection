@@ -1,11 +1,11 @@
-[![CI/CD Pipeline](https://github.com/nhatminh-115/PPE-Detection/actions/workflows/ci-cd-pipeline.yml/badge.svg)](https://github.com/nhatminh-115/PPE-Detection/actions/workflows/ci-cd-pipeline.yml)
+[![CI/CD Pipeline](https://github.com/nhatminh-115/SentinelVision/actions/workflows/ci-cd-pipeline.yml/badge.svg)](https://github.com/nhatminh-115/SentinelVision/actions/workflows/ci-cd-pipeline.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.x-red)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Docker](https://img.shields.io/badge/Docker-Ready-blue)
 ![Terraform](https://img.shields.io/badge/Terraform-1.10+-purple)
 
-# PPE Detection
+# SentinelVision
 
 Real-time, cloud-native PPE compliance monitoring for construction and industrial environments.
 
@@ -189,7 +189,7 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your_anon_key
 SUPABASE_SERVICE_KEY=your_service_role_key
 
-MLFLOW_TRACKING_URI=https://dagshub.com/your-username/PPE-Detection.mlflow
+MLFLOW_TRACKING_URI=https://dagshub.com/your-username/SentinelVision.mlflow
 MLFLOW_TRACKING_USERNAME=your_dagshub_username
 MLFLOW_TRACKING_PASSWORD=your_dagshub_token
 
@@ -246,8 +246,8 @@ Variables: `AWS_DEFAULT_REGION`, `S3_PREFIX`, `RETRAIN_LAUNCH_TEMPLATE_ID`, `RET
 ### Path A — Run from source
 
 ```bash
-git clone https://github.com/nhatminh-115/PPE-Detection.git
-cd PPE-Detection
+git clone https://github.com/nhatminh-115/SentinelVision.git
+cd SentinelVision
 # place .env here
 python main.py
 ```

@@ -22,11 +22,8 @@ from typing import Optional
 # cv2 and numpy are lazy-imported inside functions that need them (not available in CI
 # environments that only run report/drift pipelines without OpenCV installed).
 
-# Prevent torch from loading CUDA DLLs at import time (WinError 1455 on small paging files).
-# Real-ESRGAN inference for crop normalization runs on CPU only — GPU is not needed here.
 import os as _os
 import sys as _sys
-_os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
 
 # basicsr 1.4.2 references torchvision.transforms.functional_tensor which was
 # removed in torchvision >= 0.17. Shim it before any realesrgan/basicsr import.
@@ -142,10 +139,7 @@ class _SRUpscaler:
                 num_feat=64, num_block=23, num_grow_ch=32,
                 scale=_SR_SCALE,
             )
-            try:
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-            except OSError:
-                device = "cpu"
+            device = "cpu"  # SR upscaler for crop normalization; keep off GPU to avoid VRAM contention
             self._upsampler = RealESRGANer(
                 scale=_SR_SCALE,
                 model_path=model_path,
@@ -169,7 +163,7 @@ class _SRUpscaler:
         except OSError as exc:
             logger.warning(
                 "torch failed to load (%s) — bicubic fallback active. "
-                "Set CUDA_VISIBLE_DEVICES='' or increase Windows paging file size.",
+                "Try increasing the Windows paging file size.",
                 exc,
             )
             return False
@@ -250,7 +244,7 @@ from src.config import MLFLOW_RUN_ID, EFFNET_RUN_ID
 # run_id here is the MLflow training run that produced the model weights — NOT session_id.
 # SigLIP/CLIP are zero-shot pretrained models with no MLflow run; run_id is None for them.
 _MODEL_METADATA_MAP: dict[str, tuple[str, str, str | None]] = {
-    "yolo":    ("YOLOv8",          "v1",      MLFLOW_RUN_ID),
+    "yolo":    ("YOLO11+24 Ensemble",          "v1",      MLFLOW_RUN_ID),
     "effnet":  ("EfficientNet-B0", "stage2",  EFFNET_RUN_ID),
     "siglip":  ("SigLIP-SO400M",   "webli",   None),
     "clip":    ("SigLIP-SO400M",   "webli",   None),

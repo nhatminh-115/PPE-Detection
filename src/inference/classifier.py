@@ -341,7 +341,7 @@ def _classify_siglip_batch(siglip_bundle, frame, boxes, device, pose_results=Non
         return [None] * len(boxes)
 
     if is_onnx:
-        # Keep on CPU — ONNX session runs on CPU, avoid GPU↔CPU roundtrip
+        # ONNX session accepts numpy input; keep tensors on CPU here, session handles device internally
         head_batch = torch.stack(head_tensors)
         torso_batch = torch.stack(torso_tensors)
     else:

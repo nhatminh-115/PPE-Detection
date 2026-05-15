@@ -13,9 +13,9 @@ language:
 pipeline_tag: zero-shot-image-classification
 ---
 
-# SigLIP SO400M — PPE Detection ONNX INT8
+# SigLIP SO400M — SentinelVision ONNX INT8
 
-Dynamic INT8 quantization of the [SigLIP SO400M](https://huggingface.co/timm/ViT-SO400M-14-SigLIP-384) image encoder, optimized for CPU inference in the [PPE Detection](https://github.com/nhatminh-115/PPE-Detection) pipeline.
+Dynamic INT8 quantization of the [SigLIP SO400M](https://huggingface.co/timm/ViT-SO400M-14-SigLIP-384) image encoder, optimized for CPU inference in the [SentinelVision](https://github.com/nhatminh-115/SentinelVision) pipeline.
 
 Only the **image tower** is exported. Text embeddings are pre-computed at startup from the original PyTorch weights and cached in memory.
 
@@ -34,7 +34,7 @@ Only the **image tower** is exported. Text embeddings are pre-computed at startu
 
 ## Intended use
 
-Zero-shot PPE classification in the [PPE Detection](https://github.com/nhatminh-115/PPE-Detection) system:
+Zero-shot PPE classification in the [SentinelVision](https://github.com/nhatminh-115/SentinelVision) system:
 
 - **Hardhat detection**: head region crop → cosine similarity against positive/negative text prompts
 - **Safety vest detection**: torso region crop → cosine similarity against positive/negative text prompts
@@ -68,7 +68,7 @@ The `logit_scale` for this model is **111.54** (i.e., `exp(4.714)`).
 ## Regenerating
 
 ```bash
-git clone https://github.com/nhatminh-115/PPE-Detection
-cd PPE-Detection
+git clone https://github.com/nhatminh-115/SentinelVision
+cd SentinelVision
 python scripts/export_siglip_onnx.py --upload
 ```

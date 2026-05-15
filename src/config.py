@@ -1,6 +1,12 @@
 import os
 from dotenv import load_dotenv
-load_dotenv()
+
+_env = os.getenv("APP_ENV", "prod")
+_env_file = f".env.{_env}"
+if os.path.exists(_env_file):
+    load_dotenv(_env_file, override=True)
+else:
+    load_dotenv()
 
 # ---------------------------------------------------------------------------
 # External services  (loaded from .env)

@@ -3,7 +3,7 @@
 # is only needed if you're deploying to a different environment.
 
 # aws_region     = "us-east-1"
-# project_name   = "ppe-detection"
+# project_name   = "sentinel-vision"
 # environment    = "production"
 # s3_bucket_name = "ppe-flywheel"
 # s3_prefix      = "ppe-flywheel"

@@ -1,4 +1,4 @@
--- PPE Detection System: Complete Database Schema
+-- SentinelVision: Complete Database Schema
 -- Run this consolidated file for quick setup, or use numbered migrations (001-007) for version control.
 -- Generated from migrations 001-007.
 

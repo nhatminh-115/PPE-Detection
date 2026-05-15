@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "project_name" {
   description = "Short project identifier — used as a prefix for resource names."
   type        = string
-  default     = "ppe-detection"
+  default     = "sentinel-vision"
 }
 
 variable "environment" {

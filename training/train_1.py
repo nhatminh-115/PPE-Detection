@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- A. MLflow & MLOps Configuration ---
-DAGSHUB_URI = "https://dagshub.com/nhatminh-115/PPE-Detection.mlflow"
+DAGSHUB_URI = "https://dagshub.com/nhatminh-115/SentinelVision.mlflow"
 
 EXPERIMENT_NAME = "PPE_Stage1_Human_Detection" 
 RUN_NAME = "VisDrone_Human_Base_Nano_3"

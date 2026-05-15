@@ -12,7 +12,7 @@ load_dotenv()
 # ==============================================================================
 # CONFIG
 # ==============================================================================
-DAGSHUB_URI     = "https://dagshub.com/nhatminh-115/PPE-Detection.mlflow"
+DAGSHUB_URI     = "https://dagshub.com/nhatminh-115/SentinelVision.mlflow"
 EXPERIMENT_NAME = "PPE_Stage2_Classification_"
 RUN_NAME        = "EfficientNetV2_B0_4Class_1"
 

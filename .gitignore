@@ -259,3 +259,11 @@ docs/*.md
 
 # Scratch — local experiments only, never committed
 scratch/
+.gitnexus
+AGENTS.md
+CLAUDE.md
+
+# Node / npx artifacts (gitnexus, MCP tooling)
+node_modules/
+package-lock.json
+package.json

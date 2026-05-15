@@ -127,7 +127,7 @@ if os.getenv("MUTE_THIRD_PARTY_STARTUP_LOGS", "1") == "1":
         "huggingface_hub",
         "huggingface_hub.file_download",
         "httpx",
-        "httpcore",
+        "httpcore", 
     ):
         logging.getLogger(noisy_logger).setLevel(quiet_level)
     logging.getLogger().addFilter(_StartupNoiseFilter())
@@ -212,27 +212,27 @@ _siglip_image_size = warmup_h
 
 
 def _export_siglip_onnx_on_startup(model: torch.nn.Module, image_size: int, output_path: str) -> bool:
-    """Export SigLIP image encoder to ONNX INT8 at startup. Returns True on success."""
+    """Export SigLIP image encoder to ONNX FP16 at startup. Returns True on success."""
     try:
-        from onnxruntime.quantization import quantize_dynamic, QuantType
+        import copy
 
-        class _Encoder(torch.nn.Module):
+        class _EncoderFP16(torch.nn.Module):
             def __init__(self, m):
                 super().__init__()
-                self.visual = m.visual
+                self.visual = copy.deepcopy(m.visual).half()
 
             def forward(self, x):
-                return self.visual(x)
+                return self.visual(x.half()).float()
 
-        fp32_tmp = output_path + ".fp32.tmp"
-        encoder = _Encoder(model).eval().cpu()
+        encoder = _EncoderFP16(model).eval().cpu()
         dummy = torch.zeros(1, 3, image_size, image_size)
 
-        logger.info("SigLIP ONNX export starting (this may take a minute)...")
+        logger.info("SigLIP ONNX FP16 export starting (this may take a minute)...")
         torch.onnx.export(
             encoder,
             dummy,
-            fp32_tmp,
+            output_path,
+            dynamo=False,
             opset_version=17,
             input_names=["pixel_values"],
             output_names=["image_features"],
@@ -242,9 +242,7 @@ def _export_siglip_onnx_on_startup(model: torch.nn.Module, image_size: int, outp
             },
             do_constant_folding=True,
         )
-        quantize_dynamic(fp32_tmp, output_path, weight_type=QuantType.QInt8)
-        os.remove(fp32_tmp)
-        logger.info(f"SigLIP ONNX export complete -> {output_path}")
+        logger.info(f"SigLIP ONNX FP16 export complete -> {output_path}")
         return True
     except Exception as ex:
         logger.error(f"SigLIP ONNX export failed: {ex}")
@@ -559,7 +557,7 @@ if _siglip_ort_session is not None:
     # PyTorch model no longer needed — free ~1.6 GB RAM.
     del siglip_model
     torch.cuda.empty_cache()
-    logger.info("SigLIP inference: ONNX INT8 (PyTorch model offloaded)")
+    logger.info("SigLIP inference: ONNX FP16 (PyTorch model offloaded)")
 else:
     _siglip_bundle = {
         "model": siglip_model,
@@ -575,7 +573,7 @@ model_stage2 = {
 
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=INFERENCE_THREAD_WORKERS)
 
-app = FastAPI(title="PPE Detection API", version="3.0.0")
+app = FastAPI(title="SentinelVision API", version="3.0.0")
 app.mount(
     "/violation_crops",
     StaticFiles(directory="violation_crops"),
