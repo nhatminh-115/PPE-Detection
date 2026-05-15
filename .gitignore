@@ -251,10 +251,10 @@ terraform/*.tfplan
 *.mkv
 docs/*.html
 docs/*.png
+!docs/SentinelVision_Logo.png
 docs/*.jpg
 docs/*.jpeg
 docs/*.gif
-docs/*.md
 docs/*.md
 
 # Scratch — local experiments only, never committed
