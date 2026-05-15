@@ -51,7 +51,7 @@ YOLO11s (VisDrone fine-tune, aerial) and YOLO26l (COCO, close-range) run in para
 
 **Stage 2 — Classify Lock FSM**
 
-Each tracker follows a three-state lifecycle: **ACTIVE** (classify every frame, lock after 3 stable verdicts) → **LOCKED** (cached verdict, inference skipped) → **FORCE RECHECK** (after 20s lock age or confidence drop). Eliminates redundant GPU inference on steady-state workers.
+Each tracker follows a two-state lifecycle: **ACTIVE** (classify every frame, lock after 3 stable verdicts) → **LOCKED** (cached verdict, inference skipped). The only exit from LOCKED is a timer: after `CLASSIFY_FORCE_RECHECK_SEC` (default 20s), the tracker resets to ACTIVE for a fresh classification cycle. No inference runs while LOCKED, so there is no live confidence signal to trigger early re-entry. Eliminates redundant GPU inference on steady-state workers.
 
 **Stage 3 — Pose-Guided PPE Classification**
 
